@@ -3,10 +3,12 @@
 use super::*;
 use crate::ui::keys::{
     self, Binding, SHORTCUT_MODIFIERS,
-    bindings::{COPY, DOWN, ESCAPE_ANY, FIRST_ITEM, LAST_ITEM, LEFT, RIGHT, SELECT_ALL, UP},
+    bindings::{
+        COPY, DOWN, ESCAPE_ANY, FIRST_ITEM, LAST_ITEM, LEFT, RIGHT, SELECT_ALL, UNSELECT_ALL, UP,
+    },
 };
 
-const CLEARS_SELECTION: [Binding; 7] = [
+const CLEARS_SELECTION: [Binding; 9] = [
     ESCAPE_ANY,
     LEFT.ignoring(SHORTCUT_MODIFIERS),
     RIGHT.ignoring(SHORTCUT_MODIFIERS),
@@ -14,6 +16,8 @@ const CLEARS_SELECTION: [Binding; 7] = [
     DOWN.ignoring(SHORTCUT_MODIFIERS),
     FIRST_ITEM.ignoring(SHORTCUT_MODIFIERS),
     LAST_ITEM.ignoring(SHORTCUT_MODIFIERS),
+    SELECT_ALL,
+    UNSELECT_ALL,
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -403,7 +407,7 @@ impl Selection {
                 view.clipboard().set_text(&text);
                 return glib::Propagation::Stop;
             }
-            if press.is_any(&CLEARS_SELECTION) || press.is(SELECT_ALL) {
+            if press.is_any(&CLEARS_SELECTION) {
                 state.clear();
             }
             glib::Propagation::Proceed

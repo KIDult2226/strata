@@ -137,6 +137,59 @@ fn selection_copies_sorted_rows_partial_unicode_and_ragged_cells() {
 }
 
 #[test]
+fn select_all_and_unselect_all_clear_the_cell_range_exactly() {
+    crate::test_support::gtk_test(
+        "ui::table_view::selection::tests::select_all_and_unselect_all_clear_the_cell_range_exactly",
+        || {
+            use gtk::gdk::{Key, ModifierType as Modifiers};
+            let table = TableState::new(vec![vec![DocumentTableCellLayout {
+                text: "value".into(),
+                header: false,
+                spans: Vec::new(),
+            }]]);
+            let view = gtk::ColumnView::new(None::<gtk::NoSelection>);
+            let scroll = gtk::ScrolledWindow::builder().child(&view).build();
+            let selection = Selection::new(table);
+            selection.install(&view, &scroll);
+            let keys = view
+                .observe_controllers()
+                .iter::<glib::Object>()
+                .filter_map(Result::ok)
+                .find_map(|controller| controller.downcast::<gtk::EventControllerKey>().ok())
+                .expect("selection key controller");
+            let point = |offset| Point {
+                row: 0,
+                column: 0,
+                offset,
+            };
+            for (key, modifiers, clears) in [
+                (Key::a, Modifiers::CONTROL_MASK, true),
+                (
+                    Key::A,
+                    Modifiers::CONTROL_MASK | Modifiers::SHIFT_MASK,
+                    true,
+                ),
+                (Key::a, Modifiers::CONTROL_MASK | Modifiers::ALT_MASK, false),
+            ] {
+                selection.range.set(Some(Range {
+                    anchor: point(0),
+                    focus: point(5),
+                }));
+                assert!(
+                    !keys.emit_by_name::<bool>("key-pressed", &[&key, &0u32, &modifiers]),
+                    "{modifiers:?}+{key:?} passes on to the focused cell"
+                );
+                assert_eq!(
+                    selection.copy_text().is_none(),
+                    clears,
+                    "{modifiers:?}+{key:?}"
+                );
+            }
+        },
+    );
+}
+
+#[test]
 fn unmapping_releases_the_window_dismissal_listener() {
     crate::test_support::gtk_test(
         "ui::table_view::selection::tests::unmapping_releases_the_window_dismissal_listener",

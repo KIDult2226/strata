@@ -34,6 +34,7 @@ mod navigation;
 mod preview;
 mod reference;
 mod tenxer;
+mod widgets;
 mod window;
 
 pub(crate) use chooser::*;
@@ -42,6 +43,7 @@ pub(crate) use navigation::*;
 pub(crate) use preview::*;
 pub(crate) use reference::*;
 pub(crate) use tenxer::*;
+pub(crate) use widgets::*;
 pub(crate) use window::*;
 
 #[cfg(test)]
@@ -60,6 +62,7 @@ pub(super) fn listed() -> impl Iterator<Item = (&'static str, Entry)> {
         preview::LISTED,
         reference::LISTED,
         tenxer::LISTED,
+        widgets::LISTED,
         window::LISTED,
     ]
     .into_iter()
@@ -76,6 +79,7 @@ pub(super) fn unlisted() -> impl Iterator<Item = (&'static str, Entry)> {
         preview::UNLISTED,
         reference::UNLISTED,
         tenxer::UNLISTED,
+        widgets::UNLISTED,
         window::UNLISTED,
     ]
     .into_iter()
