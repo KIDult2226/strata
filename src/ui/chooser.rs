@@ -60,12 +60,9 @@ use super::{
     },
 };
 use super::{
-    focus_navigation::{arrow_direction, plain_tab_direction},
+    focus_navigation::{FOCUS_MODIFIERS, arrow_direction, plain_tab_direction},
     keys::{self, KeyPress, SHORTCUT_MODIFIERS, bindings::*},
 };
-
-/// Shift and Super ride along with arrows and keys that move focus or the cursor.
-const FOCUS_MODIFIERS: ModifierType = ModifierType::SHIFT_MASK.union(ModifierType::SUPER_MASK);
 
 type Completion = Box<dyn FnOnce(ashpd::backend::Result<SelectedFiles>)>;
 type DestinationValidator = Rc<dyn Fn(&Path) -> Result<PathBuf, String>>;

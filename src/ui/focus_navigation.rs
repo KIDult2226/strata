@@ -13,6 +13,10 @@ use super::keys::{
 #[cfg(test)]
 mod tests;
 
+/// Shift and Super ride along with keys that move focus or the cursor.
+pub(super) const FOCUS_MODIFIERS: gdk::ModifierType =
+    gdk::ModifierType::SHIFT_MASK.union(gdk::ModifierType::SUPER_MASK);
+
 /// Each arrow with the **h j k l** key that stands in for it.
 const ARROWS: [(Binding, Binding); 4] = [
     (LEFT, VIM_LEFT),

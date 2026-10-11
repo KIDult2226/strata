@@ -7,14 +7,11 @@ use crate::{
     app::Browser,
     ui::{
         browser_modes::BrowserMode,
-        focus_navigation::{arrow_direction, plain_tab_direction},
+        focus_navigation::{FOCUS_MODIFIERS, arrow_direction, plain_tab_direction},
         keys::{SHORTCUT_MODIFIERS, bindings::*},
         window::{sidebar_focus_direction, vim_focus_direction},
     },
 };
-
-/// Shift and Super ride along with arrows that move focus between controls.
-const FOCUS_MODIFIERS: Modifiers = Modifiers::SHIFT_MASK.union(Modifiers::SUPER_MASK);
 
 impl Dispatcher {
     pub(super) fn focus_navigation(&self, browser: &Browser, event: &mut KeyEvent) -> KeyResult {
