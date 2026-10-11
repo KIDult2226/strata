@@ -672,17 +672,16 @@ for line in sys.stdin:
                     with_hub(Hub::tick);
                     std::thread::sleep(Duration::from_millis(5));
                 }
-                let layers = overlay_layers(&overlay);
-                let notices = layers
+                let (docks, dialogs): (Vec<_>, Vec<_>) = overlay_layers(&overlay)
+                    .into_iter()
+                    .partition(|layer| layer.has_css_class("file-operation-dock"));
+                let notices = docks
                     .iter()
-                    .filter(|layer| layer.has_css_class("overlay-notice"))
+                    .filter_map(|dock| dock.first_child()?.first_child()?.first_child())
+                    .filter(|row| row.has_css_class("overlay-notice"))
                     .count();
                 assert_eq!(notices, usize::from(notice), "{action} notice");
-                assert_eq!(
-                    layers.len() - notices,
-                    usize::from(dialog),
-                    "{action} dialog"
-                );
+                assert_eq!(dialogs.len(), usize::from(dialog), "{action} dialog");
             }
         },
     );

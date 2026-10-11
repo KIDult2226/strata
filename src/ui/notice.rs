@@ -4,25 +4,25 @@ use std::time::Duration;
 
 const NOTICE_CLASS: &str = "overlay-notice";
 
-/// Shows a brief non-interactive notice at the top of `overlay`, replacing any
-/// notice still visible there.
+/// Shows a brief non-interactive notice in the window's progress dock, or in
+/// `overlay` when it is not in a window, replacing any notice still visible.
 pub(super) fn show_notice(
     overlay: &gtk::Overlay,
     heading: Option<&str>,
     text: &str,
     duration: Duration,
 ) {
-    let mut child = overlay.first_child();
+    let overlay = &super::modal::window_overlay(overlay).unwrap_or_else(|| overlay.clone());
+    let (dock, list) = super::progress_dock::dock(overlay);
+    let mut child = list.first_child();
     while let Some(widget) = child {
         child = widget.next_sibling();
         if widget.has_css_class(NOTICE_CLASS) {
-            overlay.remove_overlay(&widget);
+            list.remove(&widget);
         }
     }
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     row.add_css_class(NOTICE_CLASS);
-    row.set_halign(gtk::Align::Center);
-    row.set_valign(gtk::Align::Start);
     row.set_can_target(false);
     let icon = crate::assets::primary_icon(crate::assets::icons::CHECK, 16);
     icon.set_valign(gtk::Align::Start);
@@ -45,15 +45,23 @@ pub(super) fn show_notice(
     column.append(&label);
     column.set_can_target(false);
     row.append(&column);
-    overlay.add_overlay(&row);
+    list.append(&row);
     let weak_overlay = overlay.downgrade();
-    let weak_row = row.downgrade();
+    let (weak_dock, weak_list, weak_row) = (dock.downgrade(), list.downgrade(), row.downgrade());
     glib::timeout_add_local_once(duration, move || {
-        let (Some(overlay), Some(row)) = (weak_overlay.upgrade(), weak_row.upgrade()) else {
+        let (Some(overlay), Some(dock), Some(list), Some(row)) = (
+            weak_overlay.upgrade(),
+            weak_dock.upgrade(),
+            weak_list.upgrade(),
+            weak_row.upgrade(),
+        ) else {
             return;
         };
-        if row.parent().as_ref() == Some(overlay.upcast_ref()) {
-            overlay.remove_overlay(&row);
+        if row.parent().as_ref() == Some(list.upcast_ref()) {
+            list.remove(&row);
+        }
+        if list.first_child().is_none() && dock.parent().is_some() {
+            overlay.remove_overlay(&dock);
         }
     });
 }
