@@ -3,6 +3,8 @@
 use gtk::{glib, prelude::*};
 use std::{cell::RefCell, collections::HashSet, rc::Rc};
 
+use crate::ui::keys::{self, bindings::ESCAPE_ANY};
+
 struct Target {
     id: &'static str,
     page: &'static str,
@@ -556,8 +558,8 @@ pub(super) fn append(navigation: &gtk::Box) -> Search {
         });
         let keys = gtk::EventControllerKey::new();
         let field = source.downgrade();
-        keys.connect_key_pressed(move |_, key, _, _| {
-            if key == gtk::gdk::Key::Escape
+        keys::on_press(&keys, move |_, press| {
+            if press.is(ESCAPE_ANY)
                 && let Some(field) = field.upgrade()
                 && !field.text().is_empty()
             {

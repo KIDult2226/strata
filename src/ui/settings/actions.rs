@@ -20,6 +20,7 @@ use crate::ui::{
         ModalTone, form_check_button, form_entry, form_error_label, message_dialog_description,
         message_dialog_layout, modal_layout, segmented_control,
     },
+    keys::{self, bindings::ESCAPE_ANY},
     modal::{ModalHost, dismiss_modal_layer, modal_layer, show_error_dialog},
 };
 
@@ -345,8 +346,8 @@ impl PageState {
         }
         let escape = gtk::EventControllerKey::new();
         let dismiss_for_escape = dismiss.clone();
-        escape.connect_key_pressed(move |_, key, _, _| {
-            if key == gtk::gdk::Key::Escape {
+        keys::on_press(&escape, move |_, press| {
+            if press.is(ESCAPE_ANY) {
                 dismiss_for_escape();
                 glib::Propagation::Stop
             } else {

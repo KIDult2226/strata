@@ -36,8 +36,13 @@ use general::general_page;
 use theme::theme_page;
 
 use super::{
-    blur::BlurBin, browser::dismiss_modal_layer, controls::modal_layout,
-    modal::modal_layer_with_backdrop, preferences::PreferenceManager, terminal,
+    blur::BlurBin,
+    browser::dismiss_modal_layer,
+    controls::modal_layout,
+    keys::{self, bindings::ESCAPE_ANY},
+    modal::modal_layer_with_backdrop,
+    preferences::PreferenceManager,
+    terminal,
 };
 
 type AvailableUpdate = (ReleaseMetadata, InstallRequest, UpdateMethod);
@@ -957,8 +962,8 @@ pub fn build_layer(
     close.connect_clicked(move |_| close_hide());
     let escape_hide = close_settings.clone();
     let keys = gtk::EventControllerKey::new();
-    keys.connect_key_pressed(move |_, key, _, _| {
-        if key != gdk::Key::Escape {
+    keys::on_press(&keys, move |_, press| {
+        if !press.is(ESCAPE_ANY) {
             return gtk::glib::Propagation::Proceed;
         }
         escape_hide();
@@ -2542,11 +2547,11 @@ fn build_update_dialog(
         button.connect_clicked(move |_| close_dialog(&layer));
     }
     let escape = gtk::EventControllerKey::new();
-    escape.connect_key_pressed({
+    keys::on_press(&escape, {
         let close_dialog = close_dialog.clone();
         let layer = layer.clone();
-        move |_, key, _, _| {
-            if key == gtk::gdk::Key::Escape {
+        move |_, press| {
+            if press.is(ESCAPE_ANY) {
                 close_dialog(&layer);
                 glib::Propagation::Stop
             } else {

@@ -7,7 +7,16 @@ use std::{
 };
 
 use super::{ACTION_EXAMPLES, ActionExample, EditorForm};
-use crate::{assets, ui::accessibility};
+use crate::{
+    assets,
+    ui::{
+        accessibility,
+        keys::{
+            self, SHORTCUT_MODIFIERS,
+            bindings::{DOWN, ESCAPE_ANY},
+        },
+    },
+};
 
 pub(super) fn button() -> gtk::MenuButton {
     let content = gtk::Box::new(gtk::Orientation::Horizontal, 6);
@@ -163,14 +172,14 @@ pub(super) fn install(button: &gtk::MenuButton, form: Weak<EditorForm>) {
     keys.set_propagation_phase(gtk::PropagationPhase::Capture);
     let weak_popover = popover.downgrade();
     let weak_search = search.downgrade();
-    keys.connect_key_pressed(move |_, key, _, _| {
-        if key == gtk::gdk::Key::Escape {
+    keys::on_press(&keys, move |_, press| {
+        if press.is(ESCAPE_ANY) {
             if let Some(popover) = weak_popover.upgrade() {
                 popover.popdown();
             }
             return glib::Propagation::Stop;
         }
-        if key == gtk::gdk::Key::Down
+        if press.is(DOWN.ignoring(SHORTCUT_MODIFIERS))
             && weak_search.upgrade().is_some_and(|search| {
                 search
                     .root()
