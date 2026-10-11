@@ -10,11 +10,11 @@ use std::{
 };
 
 use gtk::{
-    gdk::{Key, ModifierType as Modifiers},
+    gdk::ModifierType as Modifiers,
     glib::{self, Propagation},
 };
 
-use super::{Dispatcher, KeyResult, command_modifiers};
+use super::{Dispatcher, KeyResult};
 use crate::{
     app::Browser,
     model::{FileEntry, Location},
@@ -22,54 +22,49 @@ use crate::{
     ui::{
         browser::{BrowserView, CreateRefusal},
         folder_picker::{self, FolderPicker, Refused, Request},
+        keys::{KeyPress, bindings::*},
         shortcut_footer::{CandidateKeys, ShortcutFooter},
         tenxer_mode::Prompt,
     },
 };
 
-fn plain(modifiers: Modifiers) -> bool {
-    !command_modifiers(modifiers)
-        .intersects(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK | Modifiers::SUPER_MASK)
-}
+const SHIFT: Modifiers = Modifiers::SHIFT_MASK;
 
 impl Dispatcher {
-    /// Shift is ignored because some layouts type **/** with it and **?** / **N** need it.
-    pub(super) fn tenxer_prompt_keys(&self, key: Key, modifiers: Modifiers) -> KeyResult {
-        if !plain(modifiers) || !self.view.item_view_has_focus() {
+    pub(super) fn tenxer_prompt_keys(&self, press: &KeyPress) -> KeyResult {
+        if !self.view.item_view_has_focus() {
             return None;
         }
-        match key {
-            Key::slash | Key::KP_Divide => self.shortcuts.open_prompt(Prompt::Find),
-            Key::question => self.shortcuts.open_prompt(Prompt::FindBackward),
-            Key::z | Key::Z => {
-                let kind = if key == Key::z {
-                    Prompt::Jump
-                } else {
-                    Prompt::Recent
-                };
-                let opened = self.shortcuts.open_prompt(kind);
-                let browser = self.view.browser();
-                show_history_candidates(&self.shortcuts, &self.history, &browser, kind);
-                opened
-            }
-            Key::n | Key::N => {
-                self.repeat_find(key == Key::N);
-                return Some(Propagation::Stop);
-            }
-            Key::f => {
-                let query = self.view.listing_filter().unwrap_or_default();
-                self.shortcuts.open_prompt_with(Prompt::Filter, &query)
-            }
-            Key::s => match self.view.begin_listing_search() {
-                Some(query) => self.shortcuts.open_prompt_with(Prompt::Search, &query),
-                None => {
-                    self.shortcuts
-                        .show_feedback(&crate::i18n::tr("Nothing to search"));
-                    true
+        if press.is(FIND) {
+            self.shortcuts.open_prompt(Prompt::Find);
+        } else if press.is(FIND_BACKWARD) {
+            self.shortcuts.open_prompt(Prompt::FindBackward);
+        } else if press.is_any(&[JUMP_VISITED, JUMP_RECENT]) {
+            let kind = if press.is(JUMP_VISITED) {
+                Prompt::Jump
+            } else {
+                Prompt::Recent
+            };
+            self.shortcuts.open_prompt(kind);
+            let browser = self.view.browser();
+            show_history_candidates(&self.shortcuts, &self.history, &browser, kind);
+        } else if press.is_any(&[REPEAT_FIND, REPEAT_FIND_REVERSED]) {
+            self.repeat_find(press.is(REPEAT_FIND_REVERSED));
+        } else if press.is(FILTER_LISTING) {
+            let query = self.view.listing_filter().unwrap_or_default();
+            self.shortcuts.open_prompt_with(Prompt::Filter, &query);
+        } else if press.is(SEARCH_SUBFOLDERS) {
+            match self.view.begin_listing_search() {
+                Some(query) => {
+                    self.shortcuts.open_prompt_with(Prompt::Search, &query);
                 }
-            },
-            _ => return None,
-        };
+                None => self
+                    .shortcuts
+                    .show_feedback(&crate::i18n::tr("Nothing to search")),
+            }
+        } else {
+            return None;
+        }
         Some(Propagation::Stop)
     }
 
@@ -89,89 +84,68 @@ impl Dispatcher {
             .show_feedback(&rust_i18n::t!("No matches for “%{query}”", query = query));
     }
 
-    pub(super) fn prompt_key(
-        &self,
-        browser: &Browser,
-        key: Key,
-        modifiers: Modifiers,
-    ) -> Propagation {
+    pub(super) fn prompt_key(&self, browser: &Browser, press: &KeyPress) -> Propagation {
         let preferences = &self.type_to_search.preferences;
-        if crate::ui::tenxer_mode::is_toggle_shortcut(key, modifiers) {
+        if press.is(TENXER_MODE) {
             preferences.set_tenxer_mode(!preferences.tenxer_mode());
             return Propagation::Stop;
         }
-        if !plain(modifiers) {
-            return Propagation::Proceed;
-        }
         let kind = self.shortcuts.open_prompt_kind();
-        match key {
-            Key::Escape
-                if kind.is_some_and(|kind| {
-                    matches!(kind, Prompt::Create)
-                        || kind.picks_folder()
-                        || kind.holds_targets()
-                        || kind.picks_history()
-                }) =>
-            {
-                self.return_to_listing(browser)
-            }
-            Key::Escape => {
-                if self.shortcuts.open_prompt_kind() == Some(Prompt::Filter) {
-                    self.shortcuts.dismiss_prompt();
-                    if !self.view.clear_listing_filter() {
-                        browser.focus_active();
-                    }
-                    return Propagation::Stop;
+        let step = if press.is(UP.ignoring(SHIFT)) {
+            Some(-1)
+        } else if press.is(DOWN.ignoring(SHIFT)) {
+            Some(1)
+        } else {
+            None
+        };
+        if press.is(ESCAPE_ANY_SHIFT) {
+            if kind.is_some_and(|kind| {
+                matches!(kind, Prompt::Create)
+                    || kind.picks_folder()
+                    || kind.holds_targets()
+                    || kind.picks_history()
+            }) {
+                self.return_to_listing(browser);
+            } else if kind == Some(Prompt::Filter) {
+                self.shortcuts.dismiss_prompt();
+                if !self.view.clear_listing_filter() {
+                    browser.focus_active();
                 }
-                if self.shortcuts.open_prompt_kind() == Some(Prompt::Search) {
-                    let text = self.shortcuts.prompt_text();
-                    self.shortcuts.dismiss_prompt();
-                    self.view.commit_listing_search(&text);
-                    return Propagation::Stop;
-                }
+            } else if kind == Some(Prompt::Search) {
+                let text = self.shortcuts.prompt_text();
+                self.shortcuts.dismiss_prompt();
+                self.view.commit_listing_search(&text);
+            } else {
                 self.view.dismiss_find_highlight();
                 self.return_to_listing(browser);
             }
-            Key::Return | Key::KP_Enter => self.submit_prompt(browser),
-            Key::Up | Key::KP_Up | Key::Down | Key::KP_Down
-                if kind.is_some_and(Prompt::picks_history) =>
-            {
-                let delta = if matches!(key, Key::Up | Key::KP_Up) {
-                    -1
-                } else {
-                    1
-                };
-                self.shortcuts.step_candidate(delta);
+        } else if press.is(ENTER_ANY_SHIFT) {
+            self.submit_prompt(browser);
+        } else if let Some(delta) = step
+            && kind.is_some_and(Prompt::picks_history)
+        {
+            self.shortcuts.step_candidate(delta);
+            show_candidate_hint(&self.shortcuts);
+        } else if press.is(COMPLETE.ignoring(SHIFT)) && kind.is_some_and(Prompt::picks_folder) {
+            if let Some(chosen) = self.shortcuts.chosen_candidate() {
+                let current = active_folder(browser);
+                let text =
+                    folder_picker::typed_path(&chosen, current.as_deref(), &glib::home_dir());
+                self.shortcuts.type_prompt_text(&text);
+            }
+        } else if let Some(delta) = step
+            && kind.is_some_and(Prompt::picks_folder)
+        {
+            self.shortcuts.step_candidate(delta);
+            if self.shortcuts.candidate_position().is_some() {
                 show_candidate_hint(&self.shortcuts);
             }
-            Key::Tab | Key::KP_Tab | Key::ISO_Left_Tab
-                if kind.is_some_and(Prompt::picks_folder) =>
-            {
-                if let Some(chosen) = self.shortcuts.chosen_candidate() {
-                    let current = active_folder(browser);
-                    let text =
-                        folder_picker::typed_path(&chosen, current.as_deref(), &glib::home_dir());
-                    self.shortcuts.type_prompt_text(&text);
-                }
+        } else if let Some(delta) = step {
+            if !kind.is_some_and(Prompt::holds_targets) {
+                self.view.step_cursor_unfocused(delta);
             }
-            Key::Up | Key::KP_Up | Key::Down | Key::KP_Down
-                if kind.is_some_and(Prompt::picks_folder) =>
-            {
-                let delta = if matches!(key, Key::Up | Key::KP_Up) {
-                    -1
-                } else {
-                    1
-                };
-                self.shortcuts.step_candidate(delta);
-                if self.shortcuts.candidate_position().is_some() {
-                    show_candidate_hint(&self.shortcuts);
-                }
-            }
-            Key::Up | Key::KP_Up | Key::Down | Key::KP_Down
-                if kind.is_some_and(Prompt::holds_targets) => {}
-            Key::Up | Key::KP_Up => self.view.step_cursor_unfocused(-1),
-            Key::Down | Key::KP_Down => self.view.step_cursor_unfocused(1),
-            _ => return Propagation::Proceed,
+        } else {
+            return Propagation::Proceed;
         }
         Propagation::Stop
     }

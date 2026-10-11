@@ -1,60 +1,72 @@
 // SPDX-License-Identifier: MIT
 
-use gtk::prelude::*;
+use gtk::{
+    gdk::{Key, ModifierType},
+    prelude::*,
+};
 
 use super::*;
-use crate::ui::preferences::PreferenceManager;
+use crate::ui::{
+    keys::{KeyPress, bindings::*},
+    preferences::PreferenceManager,
+};
+
+const NONE: ModifierType = ModifierType::empty();
+const CONTROL: ModifierType = ModifierType::CONTROL_MASK;
+const SHIFT: ModifierType = ModifierType::SHIFT_MASK;
+const ALT: ModifierType = ModifierType::ALT_MASK;
+const SUPER: ModifierType = ModifierType::SUPER_MASK;
+const CAPS: ModifierType = ModifierType::LOCK_MASK;
+
+/// A US-QWERTY press as GDK delivers it without an event.
+fn press(key: Key, modifiers: ModifierType) -> KeyPress {
+    KeyPress::from_signal(key, 0, modifiers)
+}
 
 #[test]
 fn plain_single_pane_arrows_move_focus_not_directories() {
-    use super::{BrowserMode, SinglePaneArrow, single_pane_arrow_action};
-    use gtk::gdk::{Key, ModifierType};
-    let plain = ModifierType::empty();
+    let action = |mode, key, modifiers, at_left_edge, sidebar_visible| {
+        single_pane_arrow_action(mode, &press(key, modifiers), at_left_edge, sidebar_visible)
+    };
     assert_eq!(
-        single_pane_arrow_action(BrowserMode::Icons, Key::Left, plain, false, true),
+        action(BrowserMode::Icons, Key::Left, NONE, false, true),
         Some(SinglePaneArrow::Native)
     );
     for mode in [BrowserMode::Icons, BrowserMode::List] {
         assert_eq!(
-            single_pane_arrow_action(mode, Key::Left, plain, true, true),
+            action(mode, Key::Left, NONE, true, true),
             Some(SinglePaneArrow::Sidebar)
         );
         for key in [Key::Up, Key::Down] {
             assert_eq!(
-                single_pane_arrow_action(mode, key, plain, true, true),
+                action(mode, key, NONE, true, true),
                 Some(SinglePaneArrow::Native)
             );
         }
         for key in [Key::Left, Key::Right, Key::Up] {
-            assert_eq!(
-                single_pane_arrow_action(mode, key, ModifierType::ALT_MASK, true, true),
-                None
-            );
+            assert_eq!(action(mode, key, ALT, true, true), None);
         }
-        assert_eq!(
-            single_pane_arrow_action(mode, Key::Return, plain, true, true),
-            None
-        );
+        assert_eq!(action(mode, Key::Return, NONE, true, true), None);
     }
     assert_eq!(
-        single_pane_arrow_action(BrowserMode::List, Key::Right, plain, true, true),
+        action(BrowserMode::List, Key::Right, NONE, true, true),
         Some(SinglePaneArrow::Stay)
     );
     assert_eq!(
-        single_pane_arrow_action(BrowserMode::List, Key::Left, plain, true, false),
+        action(BrowserMode::List, Key::Left, NONE, true, false),
         Some(SinglePaneArrow::Stay)
     );
     assert_eq!(
-        single_pane_arrow_action(BrowserMode::Icons, Key::Left, plain, true, false),
+        action(BrowserMode::Icons, Key::Left, NONE, true, false),
         Some(SinglePaneArrow::Native)
     );
     assert_eq!(
-        single_pane_arrow_action(BrowserMode::Columns, Key::Left, plain, true, true),
+        action(BrowserMode::Columns, Key::Left, NONE, true, true),
         None
     );
-    for modifier in [ModifierType::SHIFT_MASK, ModifierType::CONTROL_MASK] {
+    for modifier in [SHIFT, CONTROL] {
         assert_eq!(
-            single_pane_arrow_action(BrowserMode::Icons, Key::Left, modifier, true, true),
+            action(BrowserMode::Icons, Key::Left, modifier, true, true),
             Some(SinglePaneArrow::Native)
         );
     }
@@ -62,7 +74,6 @@ fn plain_single_pane_arrows_move_focus_not_directories() {
 
 #[test]
 fn sidebar_arrows_and_vim_keys_share_focus_directions() {
-    use gtk::gdk::Key;
     for (arrow, vim) in [
         (Key::Left, Key::h),
         (Key::Right, Key::l),
@@ -70,16 +81,23 @@ fn sidebar_arrows_and_vim_keys_share_focus_directions() {
         (Key::Down, Key::j),
     ] {
         assert_eq!(
-            super::sidebar_focus_direction(arrow),
-            vim_focus_direction(vim)
+            sidebar_focus_direction(&press(arrow, NONE), NONE),
+            vim_focus_direction(&press(vim, NONE))
         );
     }
-    assert_eq!(super::sidebar_focus_direction(Key::Return), None);
+    assert_eq!(
+        sidebar_focus_direction(&press(Key::Return, NONE), NONE),
+        None
+    );
+    assert_eq!(sidebar_focus_direction(&press(Key::Up, SHIFT), NONE), None);
+    assert_eq!(
+        sidebar_focus_direction(&press(Key::Up, SHIFT), SHIFT),
+        Some(gtk::DirectionType::Up)
+    );
 }
 
 #[test]
 fn navigation_keys_claim_keyboard_ownership_but_commands_do_not() {
-    use gtk::gdk::{Key, ModifierType};
     for key in [
         Key::Up,
         Key::Down,
@@ -96,24 +114,12 @@ fn navigation_keys_claim_keyboard_ownership_but_commands_do_not() {
         Key::KP_End,
         Key::Return,
     ] {
-        assert!(
-            super::is_browser_navigation_key(key, ModifierType::empty()),
-            "{key:?}"
-        );
+        assert!(is_browser_navigation_key(&press(key, NONE)), "{key:?}");
     }
-    assert!(super::is_browser_navigation_key(
-        Key::Down,
-        ModifierType::SHIFT_MASK
-    ));
-    assert!(super::is_browser_navigation_key(
-        Key::Left,
-        ModifierType::ALT_MASK
-    ));
+    assert!(is_browser_navigation_key(&press(Key::Down, SHIFT)));
+    assert!(is_browser_navigation_key(&press(Key::Left, ALT)));
     for key in [Key::v, Key::c, Key::x, Key::z, Key::Control_L, Key::Delete] {
-        assert!(!super::is_browser_navigation_key(
-            key,
-            ModifierType::CONTROL_MASK
-        ));
+        assert!(!is_browser_navigation_key(&press(key, CONTROL)), "{key:?}");
     }
 }
 
@@ -128,177 +134,117 @@ fn mouse_history_buttons_map_to_navigation_actions() {
 
 #[test]
 fn open_terminal_shortcut_requires_control_alt() {
-    let control = gtk::gdk::ModifierType::CONTROL_MASK;
-    let shift = gtk::gdk::ModifierType::SHIFT_MASK;
-    let alt = gtk::gdk::ModifierType::ALT_MASK;
-
-    assert!(is_open_terminal_shortcut(gtk::gdk::Key::t, control | alt));
-    assert!(is_open_terminal_shortcut(gtk::gdk::Key::T, control | alt));
-    assert!(!is_open_terminal_shortcut(
-        gtk::gdk::Key::t,
-        gtk::gdk::ModifierType::empty()
-    ));
-    assert!(!is_open_terminal_shortcut(
-        gtk::gdk::Key::t,
-        control | shift
-    ));
-    assert!(!is_open_terminal_shortcut(gtk::gdk::Key::t, control));
-    assert!(!is_open_terminal_shortcut(
-        gtk::gdk::Key::t,
-        control | alt | shift
-    ));
-    assert!(!is_open_terminal_shortcut(gtk::gdk::Key::F4, control));
+    assert!(press(Key::t, CONTROL | ALT).is(TERMINAL));
+    assert!(press(Key::t, CONTROL | ALT | CAPS).is(TERMINAL));
+    assert!(!press(Key::t, NONE).is(TERMINAL));
+    assert!(!press(Key::t, CONTROL | SHIFT).is(TERMINAL));
+    assert!(!press(Key::t, CONTROL).is(TERMINAL));
+    assert!(!press(Key::t, CONTROL | ALT | SHIFT).is(TERMINAL));
+    assert!(!press(Key::F4, CONTROL).is(TERMINAL));
 }
 
 #[test]
-fn undo_shortcut_requires_control_without_shift_or_alt() {
-    let control = gtk::gdk::ModifierType::CONTROL_MASK;
-    let shift = gtk::gdk::ModifierType::SHIFT_MASK;
-    let alt = gtk::gdk::ModifierType::ALT_MASK;
-
-    assert!(is_undo_shortcut(gtk::gdk::Key::z, control));
-    assert!(is_undo_shortcut(gtk::gdk::Key::Z, control));
-    assert!(!is_undo_shortcut(
-        gtk::gdk::Key::z,
-        gtk::gdk::ModifierType::empty()
-    ));
-    assert!(!is_undo_shortcut(gtk::gdk::Key::z, control | shift));
-    assert!(!is_undo_shortcut(gtk::gdk::Key::z, control | alt));
+fn undo_shortcut_requires_control_alone() {
+    assert!(press(Key::z, CONTROL).is(UNDO));
+    assert!(press(Key::z, CONTROL | CAPS).is(UNDO));
+    assert!(!press(Key::z, NONE).is(UNDO));
+    assert!(!press(Key::z, CONTROL | SHIFT).is(UNDO));
+    assert!(!press(Key::z, CONTROL | ALT).is(UNDO));
+    assert!(!press(Key::z, CONTROL | SUPER).is(UNDO));
 }
 
 #[test]
 fn redo_shortcut_accepts_control_shift_z_and_control_y() {
-    let control = gtk::gdk::ModifierType::CONTROL_MASK;
-    let shift = gtk::gdk::ModifierType::SHIFT_MASK;
-    let alt = gtk::gdk::ModifierType::ALT_MASK;
-
-    assert!(is_redo_shortcut(gtk::gdk::Key::z, control | shift));
-    assert!(is_redo_shortcut(gtk::gdk::Key::Z, control | shift));
-    assert!(is_redo_shortcut(gtk::gdk::Key::y, control));
-    assert!(is_redo_shortcut(gtk::gdk::Key::Y, control));
-    assert!(!is_redo_shortcut(gtk::gdk::Key::z, control));
-    assert!(!is_redo_shortcut(gtk::gdk::Key::z, control | shift | alt));
-    assert!(!is_redo_shortcut(gtk::gdk::Key::y, control | shift));
-    assert!(!is_redo_shortcut(gtk::gdk::Key::y, control | alt));
-    assert!(!is_redo_shortcut(gtk::gdk::Key::z, shift));
-    assert!(!is_redo_shortcut(
-        gtk::gdk::Key::z,
-        gtk::gdk::ModifierType::empty()
-    ));
+    let redo = |key, modifiers| press(key, modifiers).is_any(&[REDO, REDO_Y]);
+    assert!(redo(Key::z, CONTROL | SHIFT));
+    assert!(redo(Key::Z, CONTROL | SHIFT));
+    assert!(redo(Key::y, CONTROL));
+    assert!(redo(Key::y, CONTROL | CAPS));
+    assert!(!redo(Key::z, CONTROL));
+    assert!(!redo(Key::z, CONTROL | SHIFT | ALT));
+    assert!(!redo(Key::y, CONTROL | SHIFT));
+    assert!(!redo(Key::y, CONTROL | ALT));
+    assert!(!redo(Key::z, SHIFT));
+    assert!(!redo(Key::z, NONE));
 }
 
 #[test]
-fn page_keys_map_to_a_scroll_direction() {
-    assert_eq!(page_direction(gtk::gdk::Key::Page_Up), Some(-1));
-    assert_eq!(page_direction(gtk::gdk::Key::KP_Page_Up), Some(-1));
-    assert_eq!(page_direction(gtk::gdk::Key::Page_Down), Some(1));
-    assert_eq!(page_direction(gtk::gdk::Key::KP_Page_Down), Some(1));
-    assert_eq!(page_direction(gtk::gdk::Key::Home), None);
+fn page_keys_and_their_keypad_twins_are_one_binding() {
+    for (key, binding) in [
+        (Key::Page_Up, PAGE_UP),
+        (Key::KP_Page_Up, PAGE_UP),
+        (Key::Page_Down, PAGE_DOWN),
+        (Key::KP_Page_Down, PAGE_DOWN),
+    ] {
+        assert!(press(key, NONE).is(binding), "{key:?}");
+    }
+    assert!(!press(Key::Home, NONE).is_any(&[PAGE_UP, PAGE_DOWN]));
 }
 
 #[test]
 fn jump_shortcut_requires_control_without_other_command_modifiers() {
-    use gtk::gdk::{Key, ModifierType};
-    let control = ModifierType::CONTROL_MASK;
-
-    assert_eq!(jump_direction(Key::Up, control), Some(-1));
-    assert_eq!(jump_direction(Key::Down, control), Some(1));
-    assert_eq!(jump_direction(Key::Left, control), None);
-    assert_eq!(jump_direction(Key::Up, ModifierType::empty()), None);
-    for modifier in [
-        ModifierType::SHIFT_MASK,
-        ModifierType::ALT_MASK,
-        ModifierType::SUPER_MASK,
-    ] {
-        assert_eq!(jump_direction(Key::Up, control | modifier), None);
+    let jump = [FIRST_ITEM_UP, LAST_ITEM_DOWN];
+    assert!(press(Key::Up, CONTROL).is(FIRST_ITEM_UP));
+    assert!(press(Key::Down, CONTROL).is(LAST_ITEM_DOWN));
+    assert!(!press(Key::Left, CONTROL).is_any(&jump));
+    assert!(!press(Key::Up, NONE).is_any(&jump));
+    for modifier in [SHIFT, ALT, SUPER] {
+        assert!(!press(Key::Up, CONTROL | modifier).is_any(&jump));
     }
 }
 
 #[test]
 fn toggle_hidden_shortcut_accepts_h_or_period_with_only_control() {
-    let control = gtk::gdk::ModifierType::CONTROL_MASK;
-    let shift = gtk::gdk::ModifierType::SHIFT_MASK;
-    let alt = gtk::gdk::ModifierType::ALT_MASK;
-
-    assert!(is_toggle_hidden_shortcut(gtk::gdk::Key::h, control));
-    assert!(is_toggle_hidden_shortcut(gtk::gdk::Key::H, control));
-    assert!(is_toggle_hidden_shortcut(gtk::gdk::Key::period, control));
-    assert!(!is_toggle_hidden_shortcut(
-        gtk::gdk::Key::h,
-        gtk::gdk::ModifierType::empty()
-    ));
-    assert!(!is_toggle_hidden_shortcut(
-        gtk::gdk::Key::h,
-        control | shift
-    ));
-    assert!(!is_toggle_hidden_shortcut(gtk::gdk::Key::h, control | alt));
-    assert!(!is_toggle_hidden_shortcut(
-        gtk::gdk::Key::period,
-        control | shift
-    ));
+    let hidden =
+        |key, modifiers| press(key, modifiers).is_any(&[HIDDEN_FILES, HIDDEN_FILES_PERIOD]);
+    assert!(hidden(Key::h, CONTROL));
+    assert!(hidden(Key::h, CONTROL | CAPS));
+    assert!(hidden(Key::period, CONTROL));
+    assert!(!hidden(Key::h, NONE));
+    assert!(!hidden(Key::h, CONTROL | SHIFT));
+    assert!(!hidden(Key::h, CONTROL | ALT));
+    // US Shift turns the period key into `>`.
+    assert!(!hidden(Key::greater, CONTROL | SHIFT));
 }
 
 #[test]
 fn sidebar_focus_shortcut_requires_control_and_shift() {
-    let control = gtk::gdk::ModifierType::CONTROL_MASK;
-    let shift = gtk::gdk::ModifierType::SHIFT_MASK;
-
-    assert!(is_sidebar_focus_shortcut(gtk::gdk::Key::b, control | shift));
-    assert!(is_sidebar_focus_shortcut(gtk::gdk::Key::B, control | shift));
-    assert!(!is_sidebar_focus_shortcut(gtk::gdk::Key::b, control));
+    assert!(press(Key::b, CONTROL | SHIFT).is(SIDEBAR_FOCUS));
+    assert!(press(Key::B, CONTROL | SHIFT).is(SIDEBAR_FOCUS));
+    assert!(!press(Key::b, CONTROL).is(SIDEBAR_FOCUS));
 }
 
 #[test]
 fn context_menu_shortcut_accepts_menu_key_alone_and_shift_f10() {
-    let shift = gtk::gdk::ModifierType::SHIFT_MASK;
-    let control = gtk::gdk::ModifierType::CONTROL_MASK;
-    let alt = gtk::gdk::ModifierType::ALT_MASK;
-
-    assert!(is_context_menu_shortcut(
-        gtk::gdk::Key::Menu,
-        gtk::gdk::ModifierType::empty()
-    ));
-    assert!(is_context_menu_shortcut(gtk::gdk::Key::F10, shift));
-    assert!(!is_context_menu_shortcut(gtk::gdk::Key::Menu, shift));
-    assert!(!is_context_menu_shortcut(gtk::gdk::Key::Menu, control));
-    assert!(!is_context_menu_shortcut(
-        gtk::gdk::Key::F10,
-        gtk::gdk::ModifierType::empty()
-    ));
-    assert!(!is_context_menu_shortcut(
-        gtk::gdk::Key::F10,
-        shift | control
-    ));
-    assert!(!is_context_menu_shortcut(gtk::gdk::Key::F10, shift | alt));
-    for modifier in [
-        gtk::gdk::ModifierType::SUPER_MASK,
-        gtk::gdk::ModifierType::HYPER_MASK,
-        gtk::gdk::ModifierType::META_MASK,
-    ] {
-        assert!(!is_context_menu_shortcut(
-            gtk::gdk::Key::F10,
-            shift | modifier
-        ));
-        assert!(!is_context_menu_shortcut(gtk::gdk::Key::Menu, modifier));
+    let menu = |key, modifiers| press(key, modifiers).is_any(&[CONTEXT_MENU, CONTEXT_MENU_F10]);
+    assert!(menu(Key::Menu, NONE));
+    assert!(menu(Key::F10, SHIFT));
+    assert!(!menu(Key::Menu, SHIFT));
+    assert!(!menu(Key::Menu, CONTROL));
+    assert!(!menu(Key::F10, NONE));
+    assert!(!menu(Key::F10, SHIFT | CONTROL));
+    assert!(!menu(Key::F10, SHIFT | ALT));
+    assert!(!menu(Key::F10, SHIFT | SUPER));
+    assert!(!menu(Key::Menu, SUPER));
+    // Hyper, Meta and the locks are not shortcut modifiers.
+    for modifier in [ModifierType::HYPER_MASK, ModifierType::META_MASK, CAPS] {
+        assert!(menu(Key::F10, SHIFT | modifier));
+        assert!(menu(Key::Menu, modifier));
     }
-    assert!(is_context_menu_shortcut(
-        gtk::gdk::Key::Menu,
-        gtk::gdk::ModifierType::LOCK_MASK
-    ));
 }
 
 #[test]
 fn type_to_search_accepts_printable_keys_without_command_modifiers() {
     assert_eq!(
-        type_to_search_query(gtk::gdk::Key::a, gtk::gdk::ModifierType::empty()),
+        type_to_search_query(&press(Key::a, NONE)),
         Some(TypeToSearchQuery::Character('a'))
     );
     assert_eq!(
-        type_to_search_query(gtk::gdk::Key::A, gtk::gdk::ModifierType::SHIFT_MASK),
+        type_to_search_query(&press(Key::A, SHIFT)),
         Some(TypeToSearchQuery::Character('A'))
     );
     assert_eq!(
-        type_to_search_query(gtk::gdk::Key::period, gtk::gdk::ModifierType::empty()),
+        type_to_search_query(&press(Key::period, NONE)),
         Some(TypeToSearchQuery::Character('.'))
     );
 }
@@ -306,120 +252,76 @@ fn type_to_search_accepts_printable_keys_without_command_modifiers() {
 #[test]
 fn type_to_search_uses_slash_to_open_an_empty_filter() {
     assert_eq!(
-        type_to_search_query(gtk::gdk::Key::slash, gtk::gdk::ModifierType::empty()),
+        type_to_search_query(&press(Key::slash, NONE)),
         Some(TypeToSearchQuery::Empty)
     );
 }
 
 #[test]
 fn type_to_search_leaves_space_for_quick_preview() {
-    for modifiers in [
-        gtk::gdk::ModifierType::empty(),
-        gtk::gdk::ModifierType::SHIFT_MASK,
-    ] {
-        assert_eq!(type_to_search_query(gtk::gdk::Key::space, modifiers), None);
+    for modifiers in [NONE, SHIFT] {
+        assert_eq!(type_to_search_query(&press(Key::space, modifiers)), None);
     }
 }
 
 #[test]
 fn type_to_search_ignores_shortcuts_and_non_printable_keys() {
-    assert_eq!(
-        type_to_search_query(gtk::gdk::Key::k, gtk::gdk::ModifierType::CONTROL_MASK),
-        None
-    );
-    assert_eq!(
-        type_to_search_query(gtk::gdk::Key::F5, gtk::gdk::ModifierType::empty()),
-        None
-    );
+    assert_eq!(type_to_search_query(&press(Key::k, CONTROL)), None);
+    assert_eq!(type_to_search_query(&press(Key::F5, NONE)), None);
 }
 
 #[test]
 fn vim_focus_keys_map_to_gtk_directions() {
-    assert_eq!(
-        vim_focus_direction(gtk::gdk::Key::h),
-        Some(gtk::DirectionType::Left)
-    );
-    assert_eq!(
-        vim_focus_direction(gtk::gdk::Key::j),
-        Some(gtk::DirectionType::Down)
-    );
-    assert_eq!(
-        vim_focus_direction(gtk::gdk::Key::k),
-        Some(gtk::DirectionType::Up)
-    );
-    assert_eq!(
-        vim_focus_direction(gtk::gdk::Key::l),
-        Some(gtk::DirectionType::Right)
-    );
-    assert_eq!(vim_focus_direction(gtk::gdk::Key::Down), None);
+    for (key, direction) in [
+        (Key::h, gtk::DirectionType::Left),
+        (Key::j, gtk::DirectionType::Down),
+        (Key::k, gtk::DirectionType::Up),
+        (Key::l, gtk::DirectionType::Right),
+    ] {
+        assert_eq!(vim_focus_direction(&press(key, NONE)), Some(direction));
+    }
+    assert_eq!(vim_focus_direction(&press(Key::Down, NONE)), None);
 }
 
 #[test]
 fn control_digits_select_each_browser_presentation() {
-    use super::BrowserMode;
-
-    assert_eq!(
-        browser_mode_for_digit(gtk::gdk::Key::_1),
-        Some(BrowserMode::Columns)
-    );
-    assert_eq!(
-        browser_mode_for_digit(gtk::gdk::Key::_2),
-        Some(BrowserMode::Icons)
-    );
-    assert_eq!(
-        browser_mode_for_digit(gtk::gdk::Key::_3),
-        Some(BrowserMode::List)
-    );
-    assert_eq!(
-        browser_mode_for_digit(gtk::gdk::Key::KP_3),
-        Some(BrowserMode::List)
-    );
-    assert_eq!(browser_mode_for_digit(gtk::gdk::Key::_4), None);
-    assert_eq!(browser_mode_for_digit(gtk::gdk::Key::a), None);
+    for (key, mode) in [
+        (Key::_1, BrowserMode::Columns),
+        (Key::_2, BrowserMode::Icons),
+        (Key::_3, BrowserMode::List),
+        (Key::KP_3, BrowserMode::List),
+    ] {
+        assert_eq!(browser_mode_for_digit(&press(key, CONTROL)), Some(mode));
+    }
+    assert_eq!(browser_mode_for_digit(&press(Key::_4, CONTROL)), None);
+    assert_eq!(browser_mode_for_digit(&press(Key::a, CONTROL)), None);
+    assert_eq!(browser_mode_for_digit(&press(Key::_1, NONE)), None);
 }
 
 #[test]
 fn rename_shortcut_accepts_f2_and_control_r() {
-    let control = gtk::gdk::ModifierType::CONTROL_MASK;
-    assert!(is_rename_shortcut(
-        gtk::gdk::Key::F2,
-        gtk::gdk::ModifierType::empty()
-    ));
-    assert!(is_rename_shortcut(gtk::gdk::Key::r, control));
-    assert!(is_rename_shortcut(gtk::gdk::Key::R, control));
+    let rename = |key, modifiers| press(key, modifiers).is_any(&[RENAME, RENAME_R]);
+    assert!(rename(Key::F2, NONE));
+    assert!(rename(Key::r, CONTROL));
+    assert!(rename(Key::r, CONTROL | CAPS));
 }
 
 #[test]
 fn rename_shortcut_ignores_extra_modifiers_and_other_keys() {
-    let control = gtk::gdk::ModifierType::CONTROL_MASK;
-    assert!(!is_rename_shortcut(
-        gtk::gdk::Key::r,
-        gtk::gdk::ModifierType::empty()
-    ));
-    assert!(!is_rename_shortcut(
-        gtk::gdk::Key::r,
-        control | gtk::gdk::ModifierType::SHIFT_MASK
-    ));
-    assert!(!is_rename_shortcut(
-        gtk::gdk::Key::r,
-        control | gtk::gdk::ModifierType::ALT_MASK
-    ));
-    assert!(!is_rename_shortcut(gtk::gdk::Key::F2, control));
-    assert!(!is_rename_shortcut(gtk::gdk::Key::F5, control));
+    let rename = |key, modifiers| press(key, modifiers).is_any(&[RENAME, RENAME_R]);
+    assert!(!rename(Key::r, NONE));
+    assert!(!rename(Key::r, CONTROL | SHIFT));
+    assert!(!rename(Key::r, CONTROL | ALT));
+    assert!(!rename(Key::F2, CONTROL));
+    assert!(!rename(Key::F5, CONTROL));
 }
 
 #[test]
 fn refresh_shortcut_keeps_f5_and_releases_control_r() {
-    assert!(is_refresh_shortcut(gtk::gdk::Key::F5));
-    assert!(!is_refresh_shortcut(gtk::gdk::Key::r));
-    assert!(!is_rename_shortcut(
-        gtk::gdk::Key::F5,
-        gtk::gdk::ModifierType::empty()
-    ));
-    assert!(is_rename_shortcut(
-        gtk::gdk::Key::r,
-        gtk::gdk::ModifierType::CONTROL_MASK
-    ));
+    assert!(press(Key::F5, NONE).is(REFRESH));
+    assert!(!press(Key::r, NONE).is(REFRESH));
+    assert!(!press(Key::F5, NONE).is_any(&[RENAME, RENAME_R]));
+    assert!(press(Key::r, CONTROL).is_any(&[RENAME, RENAME_R]));
 }
 
 #[test]
@@ -432,7 +334,7 @@ fn default_accels_never_bind_one_chord_twice() {
                 for accel in *accels {
                     let chord = gtk::accelerator_parse(*accel).expect("valid default accelerator");
                     assert!(
-                        !is_rename_shortcut(chord.0, chord.1),
+                        !press(chord.0, chord.1).is_any(&[RENAME, RENAME_R]),
                         "{action} must not claim a rename shortcut"
                     );
                     assert!(
@@ -556,18 +458,9 @@ fn settle_policy() {
 
 #[test]
 fn native_editing_shortcuts_are_left_to_the_focused_widget() {
-    let control = gtk::gdk::ModifierType::CONTROL_MASK;
-
-    for key in [
-        gtk::gdk::Key::a,
-        gtk::gdk::Key::c,
-        gtk::gdk::Key::v,
-        gtk::gdk::Key::x,
-    ] {
-        assert!(is_native_editing_shortcut(key, control));
+    let editing = [SELECT_ALL, COPY, PASTE, CUT];
+    for key in [Key::a, Key::c, Key::v, Key::x] {
+        assert!(press(key, CONTROL).is_any(&editing), "{key:?}");
     }
-    assert!(!is_native_editing_shortcut(
-        gtk::gdk::Key::c,
-        control | gtk::gdk::ModifierType::SHIFT_MASK
-    ));
+    assert!(!press(Key::c, CONTROL | SHIFT).is_any(&editing));
 }

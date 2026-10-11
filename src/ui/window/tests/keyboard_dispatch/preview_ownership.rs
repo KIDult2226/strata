@@ -631,7 +631,11 @@ fn default_archive_keys_follow_pane_focus() {
                 assert!(fixture.preview.archive_at_root());
                 assert!(archive_has_focus(&fixture));
                 assert_eq!(fixture.selected(), selection);
-                assert!(!fixture.preview.archive_key(Key::Left));
+                assert!(
+                    !fixture
+                        .preview
+                        .archive_key(crate::ui::preview::ArchiveMove::Parent)
+                );
                 fixture.press(Key::Left, ModifierType::empty());
                 wait_until(|| fixture.view.item_view_has_focus());
                 assert!(!owner_bar(&fixture));

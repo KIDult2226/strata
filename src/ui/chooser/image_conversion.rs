@@ -237,8 +237,8 @@ impl ChooserState {
         });
         let escape = gtk::EventControllerKey::new();
         let cancel = layout.cancel.clone();
-        escape.connect_key_pressed(move |_, key, _, _| {
-            if key == gtk::gdk::Key::Escape {
+        keys::on_press(&escape, move |_, press| {
+            if press.is(ESCAPE_ANY) {
                 cancel.emit_clicked();
                 glib::Propagation::Stop
             } else {

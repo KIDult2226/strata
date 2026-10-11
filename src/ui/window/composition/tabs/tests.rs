@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: MIT
 
+use gtk::gdk;
+
 use super::*;
 use crate::test_support::gtk_test;
+
+fn press(key: gdk::Key, modifiers: gdk::ModifierType) -> KeyPress {
+    KeyPress::from_signal(key, 0, modifiers)
+}
 
 fn application() -> gtk::Application {
     let application = gtk::Application::new(None::<&str>, gio::ApplicationFlags::NON_UNIQUE);
@@ -361,24 +367,27 @@ fn tab_shortcuts_work_in_both_modes_and_follow_reordering() {
                 tabs.preferences.set_tenxer_mode(tenxer);
                 for key in [Key::Page_Up, Key::Page_Down] {
                     for modifiers in [M::CONTROL_MASK, M::CONTROL_MASK | M::SHIFT_MASK] {
-                        assert!(is_tab_shortcut(key, modifiers));
-                        assert_eq!(tabs.handle_key(key, modifiers), glib::Propagation::Stop);
+                        assert!(is_tab_shortcut(&press(key, modifiers)));
+                        assert_eq!(
+                            tabs.handle_key(&press(key, modifiers)),
+                            glib::Propagation::Stop
+                        );
                         assert_eq!(tabs.active.get(), 1);
                     }
                 }
                 assert_eq!(
-                    tabs.handle_key(Key::t, M::CONTROL_MASK),
+                    tabs.handle_key(&press(Key::t, M::CONTROL_MASK)),
                     glib::Propagation::Stop
                 );
                 let new_id = tabs.active.get();
-                tabs.handle_key(Key::exclam, M::CONTROL_MASK | M::SHIFT_MASK);
+                tabs.handle_key(&press(Key::exclam, M::CONTROL_MASK | M::SHIFT_MASK));
                 assert_eq!(tabs.active.get(), 1);
                 tabs.reorder(new_id, 1);
-                tabs.handle_key(Key::exclam, M::CONTROL_MASK | M::SHIFT_MASK);
+                tabs.handle_key(&press(Key::exclam, M::CONTROL_MASK | M::SHIFT_MASK));
                 assert_eq!(tabs.active.get(), new_id);
-                tabs.handle_key(Key::Tab, M::CONTROL_MASK);
+                tabs.handle_key(&press(Key::Tab, M::CONTROL_MASK));
                 assert_eq!(tabs.active.get(), 1);
-                tabs.handle_key(Key::ISO_Left_Tab, M::CONTROL_MASK | M::SHIFT_MASK);
+                tabs.handle_key(&press(Key::ISO_Left_Tab, M::CONTROL_MASK | M::SHIFT_MASK));
                 assert_eq!(tabs.active.get(), new_id);
                 tabs.new_tab();
                 let last_id = tabs.active.get();
@@ -393,35 +402,38 @@ fn tab_shortcuts_work_in_both_modes_and_follow_reordering() {
                     (Key::KP_Page_Down, last_id),
                     (Key::KP_Page_Down, new_id),
                 ] {
-                    assert!(is_tab_shortcut(key, M::CONTROL_MASK | M::LOCK_MASK));
-                    assert_eq!(
-                        tabs.handle_key(key, M::CONTROL_MASK | M::LOCK_MASK),
-                        glib::Propagation::Stop
-                    );
+                    let press = press(key, M::CONTROL_MASK | M::LOCK_MASK);
+                    assert!(is_tab_shortcut(&press));
+                    assert_eq!(tabs.handle_key(&press), glib::Propagation::Stop);
                     assert_eq!(tabs.active.get(), expected, "{key:?}, 10xer={tenxer}");
                 }
-                for modifiers in [
-                    M::empty(),
-                    M::SUPER_MASK,
-                    M::SHIFT_MASK,
-                    M::CONTROL_MASK | M::ALT_MASK,
-                    M::CONTROL_MASK | M::SUPER_MASK,
-                    M::CONTROL_MASK | M::META_MASK,
-                    M::CONTROL_MASK | M::HYPER_MASK,
+                for key in [
+                    Key::Page_Up,
+                    Key::Page_Down,
+                    Key::KP_Page_Up,
+                    Key::KP_Page_Down,
                 ] {
-                    for key in [
-                        Key::Page_Up,
-                        Key::Page_Down,
-                        Key::KP_Page_Up,
-                        Key::KP_Page_Down,
+                    for modifiers in [
+                        M::empty(),
+                        M::SUPER_MASK,
+                        M::SHIFT_MASK,
+                        M::CONTROL_MASK | M::ALT_MASK,
+                        M::CONTROL_MASK | M::SUPER_MASK,
                     ] {
-                        assert!(!is_tab_shortcut(key, modifiers));
-                        assert_eq!(tabs.handle_key(key, modifiers), glib::Propagation::Proceed);
+                        assert!(!is_tab_shortcut(&press(key, modifiers)));
+                        assert_eq!(
+                            tabs.handle_key(&press(key, modifiers)),
+                            glib::Propagation::Proceed
+                        );
                         assert_eq!(tabs.active.get(), new_id);
+                    }
+                    // Meta and Hyper are not shortcut modifiers.
+                    for extra in [M::META_MASK, M::HYPER_MASK] {
+                        assert!(is_tab_shortcut(&press(key, M::CONTROL_MASK | extra)));
                     }
                 }
                 tabs.close(last_id);
-                tabs.handle_key(Key::w, M::CONTROL_MASK);
+                tabs.handle_key(&press(Key::w, M::CONTROL_MASK));
                 assert_eq!(tabs.active.get(), 1);
             }
             window.destroy();
@@ -464,9 +476,9 @@ fn tab_reorder_shortcuts_keep_active_context_and_stop_at_edges() {
                     (Key::KP_Page_Down, vec![1, last, middle]),
                     (Key::KP_Page_Up, vec![1, middle, last]),
                 ] {
-                    let modifiers = M::CONTROL_MASK | M::SHIFT_MASK | M::LOCK_MASK;
-                    assert!(is_tab_shortcut(key, modifiers));
-                    assert_eq!(tabs.handle_key(key, modifiers), glib::Propagation::Stop);
+                    let press = press(key, M::CONTROL_MASK | M::SHIFT_MASK | M::LOCK_MASK);
+                    assert!(is_tab_shortcut(&press));
+                    assert_eq!(tabs.handle_key(&press), glib::Propagation::Stop);
                     assert_eq!(tabs.active.get(), middle);
                     assert_eq!(
                         tabs.tabs
@@ -484,16 +496,21 @@ fn tab_reorder_shortcuts_keep_active_context_and_stop_at_edges() {
                     assert_eq!(browser.browser().selected_entries(), selected);
                 }
                 tabs.reorder(last, middle);
-                for extra in [M::ALT_MASK, M::SUPER_MASK, M::META_MASK, M::HYPER_MASK] {
-                    for key in [
-                        Key::Page_Up,
-                        Key::Page_Down,
-                        Key::KP_Page_Up,
-                        Key::KP_Page_Down,
-                    ] {
-                        let modifiers = M::CONTROL_MASK | M::SHIFT_MASK | extra;
-                        assert!(!is_tab_shortcut(key, modifiers));
-                        assert_eq!(tabs.handle_key(key, modifiers), glib::Propagation::Proceed);
+                for key in [
+                    Key::Page_Up,
+                    Key::Page_Down,
+                    Key::KP_Page_Up,
+                    Key::KP_Page_Down,
+                ] {
+                    // Meta and Hyper are not shortcut modifiers.
+                    for extra in [M::META_MASK, M::HYPER_MASK] {
+                        let press = press(key, M::CONTROL_MASK | M::SHIFT_MASK | extra);
+                        assert!(is_tab_shortcut(&press));
+                    }
+                    for extra in [M::ALT_MASK, M::SUPER_MASK] {
+                        let press = press(key, M::CONTROL_MASK | M::SHIFT_MASK | extra);
+                        assert!(!is_tab_shortcut(&press));
+                        assert_eq!(tabs.handle_key(&press), glib::Propagation::Proceed);
                         assert_eq!(tabs.active.get(), middle);
                         assert_eq!(
                             tabs.tabs
@@ -661,7 +678,10 @@ fn operations_in_inactive_tabs_prevent_tab_and_window_closure() {
                     gdk::ModifierType::CONTROL_MASK,
                     gdk::ModifierType::CONTROL_MASK | gdk::ModifierType::SHIFT_MASK,
                 ] {
-                    assert_eq!(tabs.handle_key(key, modifiers), glib::Propagation::Proceed);
+                    assert_eq!(
+                        tabs.handle_key(&press(key, modifiers)),
+                        glib::Propagation::Proceed
+                    );
                     assert_eq!(tabs.active.get(), active, "modal input cannot switch tabs");
                     assert_eq!(
                         tabs.tabs

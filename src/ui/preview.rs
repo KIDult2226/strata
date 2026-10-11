@@ -22,6 +22,13 @@ use crate::{
     },
 };
 
+use super::keys::{
+    self, KeyPress,
+    bindings::{
+        COPY, ESCAPE_ANY, MEDIA_MUTE, MEDIA_NEXT, MEDIA_PLAY_PAUSE, MEDIA_PREVIOUS,
+        MEDIA_SEEK_BACK, MEDIA_SEEK_FORWARD, MEDIA_VOLUME_DOWN, MEDIA_VOLUME_UP, SELECT_ALL,
+    },
+};
 use super::{
     blur::BlurBin, browser::format_file_size, controls::form_password_entry, controls::modal_layout,
 };
@@ -208,7 +215,7 @@ struct PreviewState {
     claim_on_resume: Cell<bool>,
 }
 
-pub(in crate::ui) use keyboard::{DocumentScroll, PreviewSurface};
+pub(in crate::ui) use keyboard::{ArchiveMove, DocumentScroll, MediaCommand, PreviewSurface};
 
 #[cfg(test)]
 mod tests;
@@ -668,18 +675,20 @@ impl PreviewDrawer {
         self.is_open() && !self.state.sizing.is_suspended() && self.state.has_media_view()
     }
 
-    pub fn handle_video_key(&self, key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
-        use gtk::gdk::ModifierType as Modifiers;
-        // `<` and `>` need Shift on most layouts.
-        let shift_allowed = matches!(key, gtk::gdk::Key::less | gtk::gdk::Key::greater);
-        if !modifiers.contains(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK)
-            || modifiers.contains(Modifiers::SUPER_MASK)
-            || (modifiers.contains(Modifiers::SHIFT_MASK) && !shift_allowed)
-            || !self.has_video()
-        {
-            return false;
-        }
-        self.state.media_command(key)
+    pub(in crate::ui) fn handle_video_key(&self, press: &KeyPress) -> bool {
+        let command = [
+            (MEDIA_PLAY_PAUSE, MediaCommand::PlayPause),
+            (MEDIA_SEEK_BACK, MediaCommand::SeekBack),
+            (MEDIA_SEEK_FORWARD, MediaCommand::SeekForward),
+            (MEDIA_VOLUME_UP, MediaCommand::VolumeUp),
+            (MEDIA_VOLUME_DOWN, MediaCommand::VolumeDown),
+            (MEDIA_MUTE, MediaCommand::Mute),
+            (MEDIA_PREVIOUS, MediaCommand::Previous),
+            (MEDIA_NEXT, MediaCommand::Next),
+        ]
+        .into_iter()
+        .find(|(binding, _)| press.is(*binding));
+        command.is_some_and(|(_, command)| self.has_video() && self.state.media_command(command))
     }
 
     pub fn show(&self, entry: FileEntry, depth: Option<usize>) {
@@ -712,8 +721,8 @@ impl PreviewDrawer {
             })
     }
 
-    pub fn archive_key(&self, key: gtk::gdk::Key) -> bool {
-        self.state.archive_key(key)
+    pub(in crate::ui) fn archive_key(&self, motion: ArchiveMove) -> bool {
+        self.state.archive_key(motion)
     }
 
     pub fn close_archive(&self) -> bool {
@@ -740,10 +749,11 @@ impl Drop for PreviewState {
 }
 
 impl PreviewState {
-    fn media_command(self: &Rc<Self>, key: gtk::gdk::Key) -> bool {
-        if matches!(key, gtk::gdk::Key::less | gtk::gdk::Key::greater) {
-            let step = if key == gtk::gdk::Key::less { -1 } else { 1 };
-            return self.step_media(step, true);
+    fn media_command(self: &Rc<Self>, command: MediaCommand) -> bool {
+        match command {
+            MediaCommand::Previous => return self.step_media(-1, true),
+            MediaCommand::Next => return self.step_media(1, true),
+            _ => {}
         }
         if let Some(video) = self.video.borrow().as_ref() {
             video.view.end_ease_in();
@@ -753,9 +763,13 @@ impl PreviewState {
         }
         let preferences = super::preferences::PreferenceManager::shared();
         if self.media_volume_slider.borrow().is_some() {
-            match key {
-                gtk::gdk::Key::Up | gtk::gdk::Key::Down => {
-                    let delta = if key == gtk::gdk::Key::Up { 0.1 } else { -0.1 };
+            match command {
+                MediaCommand::VolumeUp | MediaCommand::VolumeDown => {
+                    let delta = if command == MediaCommand::VolumeUp {
+                        0.1
+                    } else {
+                        -0.1
+                    };
                     let current = if preferences.preview_muted() {
                         0.0
                     } else {
@@ -765,7 +779,7 @@ impl PreviewState {
                     preferences.set_preview_audio(volume, volume == 0.0);
                     return true;
                 }
-                gtk::gdk::Key::m | gtk::gdk::Key::M => {
+                MediaCommand::Mute => {
                     if let Some(toggle) = self.media_toggle_mute.borrow().as_ref() {
                         toggle();
                         return true;
@@ -777,8 +791,8 @@ impl PreviewState {
         let Some(media) = self.media.borrow().clone() else {
             return false;
         };
-        match key {
-            gtk::gdk::Key::space => {
+        match command {
+            MediaCommand::PlayPause => {
                 if media.is_playing() {
                     media.pause();
                 } else {
@@ -786,8 +800,8 @@ impl PreviewState {
                 }
                 true
             }
-            gtk::gdk::Key::Left | gtk::gdk::Key::Right if media.is_seekable() => {
-                let delta: i64 = if matches!(key, gtk::gdk::Key::Right) {
+            MediaCommand::SeekBack | MediaCommand::SeekForward if media.is_seekable() => {
+                let delta: i64 = if command == MediaCommand::SeekForward {
                     5_000_000
                 } else {
                     -5_000_000
@@ -1048,8 +1062,8 @@ impl PreviewState {
         });
         let weak = Rc::downgrade(self);
         let escape = gtk::EventControllerKey::new();
-        escape.connect_key_pressed(move |_, key, _, _| {
-            if key == gtk::gdk::Key::Escape {
+        keys::on_press(&escape, move |_, press| {
+            if press.is(ESCAPE_ANY) {
                 if let Some(state) = weak.upgrade() {
                     state.cancel_print();
                 }
@@ -1762,27 +1776,26 @@ impl PreviewState {
         self.reassert_keyboard_owner();
     }
 
-    fn archive_key(&self, key: gtk::gdk::Key) -> bool {
+    fn archive_key(&self, motion: ArchiveMove) -> bool {
         let mut browsers = self.archive_browser.borrow_mut();
         let Some(browser) = browsers.as_mut() else {
             return false;
         };
-        match key {
-            gtk::gdk::Key::Up => {
+        match motion {
+            ArchiveMove::Previous => {
                 browser.move_cursor(-1);
             }
-            gtk::gdk::Key::Down => {
+            ArchiveMove::Next => {
                 browser.move_cursor(1);
             }
-            gtk::gdk::Key::Left => {
+            ArchiveMove::Parent => {
                 if !browser.go_up() {
                     return false;
                 }
             }
-            gtk::gdk::Key::Right | gtk::gdk::Key::Return | gtk::gdk::Key::KP_Enter => {
+            ArchiveMove::Open => {
                 browser.open_cursor();
             }
-            _ => return false,
         }
         drop(browsers);
         self.reassert_keyboard_owner();
@@ -2285,30 +2298,6 @@ impl PreviewState {
         });
         scroll.add_controller(zoom_scroll);
 
-        let reset_zoom = gtk::EventControllerKey::new();
-        reset_zoom.set_propagation_phase(gtk::PropagationPhase::Capture);
-        let weak_scroll = scroll.downgrade();
-        let zoom_for_reset = zoom.clone();
-        let page_width_for_reset = page_width.clone();
-        let visible_pages_for_reset = visible_pages.clone();
-        reset_zoom.connect_key_pressed(move |_, key, _, modifiers| {
-            if key.to_unicode() != Some('0')
-                || !modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK)
-            {
-                return glib::Propagation::Proceed;
-            }
-            let Some(scroll) = weak_scroll.upgrade() else {
-                return glib::Propagation::Stop;
-            };
-            zoom_for_reset.set(PDF_MIN_ZOOM);
-            let width = pdf_page_width(&scroll, PDF_MIN_ZOOM);
-            page_width_for_reset.set(width);
-            resize_pdf_pages(&visible_pages_for_reset.borrow(), width);
-            set_adjustment_value(&scroll.hadjustment(), 0.0);
-            glib::Propagation::Stop
-        });
-        list.add_controller(reset_zoom);
-
         scroll.set_focusable(true);
         scroll.set_cursor_from_name(Some("grab"));
         let drag_origin = Rc::new(Cell::new((0.0, 0.0)));
@@ -2478,42 +2467,36 @@ impl PreviewState {
         let pages_for_keys = visible_pages.clone();
         let layers_for_keys = text_layers.clone();
         let ranges_for_keys = pdf_ranges.clone();
-        keys.connect_key_pressed(move |_, key, _, modifiers| {
-            if !pdf_shortcut_modifiers(modifiers) {
-                return glib::Propagation::Proceed;
-            }
+        keys::on_press(&keys, move |_, press| {
             let Some(scroll) = weak_scroll.upgrade() else {
                 return glib::Propagation::Proceed;
             };
-            match key {
-                gtk::gdk::Key::a | gtk::gdk::Key::A => {
-                    let layers = layers_for_keys.borrow();
-                    if layers.is_empty() {
-                        return glib::Propagation::Proceed;
-                    }
-                    let desired = layers
-                        .iter()
-                        .map(|(page, layer)| (*page, (0, pdf_text::len(layer))))
-                        .collect();
-                    drop(layers);
-                    pdf_apply_ranges(
-                        &ranges_for_keys,
-                        &layers_for_keys,
-                        &pages_for_keys.borrow(),
-                        desired,
-                    );
-                    glib::Propagation::Stop
+            if press.is(SELECT_ALL) {
+                let layers = layers_for_keys.borrow();
+                if layers.is_empty() {
+                    return glib::Propagation::Proceed;
                 }
-                gtk::gdk::Key::c | gtk::gdk::Key::C => {
-                    let text =
-                        pdf_selected_text(&layers_for_keys.borrow(), &ranges_for_keys.borrow());
-                    if text.is_empty() {
-                        return glib::Propagation::Proceed;
-                    }
-                    scroll.clipboard().set_text(&text);
-                    glib::Propagation::Stop
+                let desired = layers
+                    .iter()
+                    .map(|(page, layer)| (*page, (0, pdf_text::len(layer))))
+                    .collect();
+                drop(layers);
+                pdf_apply_ranges(
+                    &ranges_for_keys,
+                    &layers_for_keys,
+                    &pages_for_keys.borrow(),
+                    desired,
+                );
+                glib::Propagation::Stop
+            } else if press.is(COPY) {
+                let text = pdf_selected_text(&layers_for_keys.borrow(), &ranges_for_keys.borrow());
+                if text.is_empty() {
+                    return glib::Propagation::Proceed;
                 }
-                _ => glib::Propagation::Proceed,
+                scroll.clipboard().set_text(&text);
+                glib::Propagation::Stop
+            } else {
+                glib::Propagation::Proceed
             }
         });
         scroll.add_controller(keys);
@@ -3987,15 +3970,6 @@ fn pdf_selected_text(
         text.push_str(&part);
     }
     text
-}
-
-/// Ctrl+key on PDF text matches the window's native-editing pass-through:
-/// Caps Lock and other latch bits ride along in the mask and must not
-/// suppress the shortcut.
-fn pdf_shortcut_modifiers(modifiers: gtk::gdk::ModifierType) -> bool {
-    modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK)
-        && !modifiers
-            .intersects(gtk::gdk::ModifierType::SHIFT_MASK | gtk::gdk::ModifierType::ALT_MASK)
 }
 
 fn pdf_selection_color() -> Option<gtk::gdk::RGBA> {

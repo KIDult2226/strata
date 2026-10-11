@@ -75,14 +75,6 @@ pub(crate) fn hide_filter_while_enabled(button: &gtk::ToggleButton, revealer: &g
     );
 }
 
-pub(crate) fn is_toggle_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
-    modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK)
-        && modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK)
-        && !modifiers
-            .intersects(gtk::gdk::ModifierType::ALT_MASK | gtk::gdk::ModifierType::SUPER_MASK)
-        && matches!(key, gtk::gdk::Key::m | gtk::gdk::Key::M)
-}
-
 /// A pending two-key command. While armed, the next key belongs to it alone.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Chord {

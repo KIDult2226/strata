@@ -111,19 +111,30 @@ fn go_chord_resolves_uris_and_visible_pin_order() {
         (Key::KP_2, pins[1].clone(), true),
     ] {
         assert_eq!(
-            go_target(key, &pins),
+            go_target(&chord_key(key), &pins),
             Some(GoTarget::Place { location, validate }),
             "{key:?}"
         );
     }
     assert_eq!(
-        go_target(Key::_9, &pins),
+        go_target(&chord_key(Key::_9), &pins),
         Some(GoTarget::Missing("No pin 9".into()))
     );
-    assert_eq!(go_target(Key::space, &pins), Some(GoTarget::Prompt));
+    assert_eq!(
+        go_target(&chord_key(Key::space), &pins),
+        Some(GoTarget::Prompt)
+    );
     for key in [Key::z, Key::G, Key::q, Key::_0] {
-        assert_eq!(go_target(key, &pins), None, "{key:?} is not a place");
+        assert_eq!(
+            go_target(&chord_key(key), &pins),
+            None,
+            "{key:?} is not a place"
+        );
     }
+}
+
+fn chord_key(key: Key) -> crate::ui::keys::KeyPress {
+    crate::ui::keys::KeyPress::from_signal(key, 0, ModifierType::empty())
 }
 
 #[test]
@@ -441,12 +452,12 @@ fn armed_chord_yields_to_earlier_capture_handlers() {
                 assert_place_key_does_not_jump(&fixture, &origin);
             }
 
-            for key in [Key::F1, Key::asciitilde, Key::grave] {
-                let modifiers = if key == Key::grave {
-                    ModifierType::SHIFT_MASK
-                } else {
-                    ModifierType::empty()
-                };
+            // US keyboards type `~` with Shift; other layouts have a key for it.
+            for (key, modifiers) in [
+                (Key::F1, ModifierType::empty()),
+                (Key::asciitilde, ModifierType::empty()),
+                (Key::asciitilde, ModifierType::SHIFT_MASK),
+            ] {
                 arm_go(&fixture);
                 assert!(fixture.press(key, modifiers), "{key:?}");
                 assert_eq!(fixture.shortcuts.armed_chord(), None, "{key:?} clears g-");

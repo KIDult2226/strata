@@ -2,9 +2,15 @@
 
 use std::{cell::RefCell, collections::HashMap, sync::Arc};
 
+use gtk::gdk::{Key, ModifierType as M};
+
 use super::{
     PdfTextLayer, pdf_apply_ranges, pdf_desired_ranges, pdf_drop_unselected_layer,
-    pdf_selected_text, pdf_shortcut_modifiers,
+    pdf_selected_text,
+};
+use crate::ui::keys::{
+    KeyPress,
+    bindings::{COPY, SELECT_ALL},
 };
 
 fn layer(text: &str) -> Arc<PdfTextLayer> {
@@ -105,11 +111,13 @@ fn select_all_replaces_stale_unbound_ranges() {
 }
 
 #[test]
-fn pdf_shortcuts_ignore_latch_bits_but_reject_shift_and_alt() {
-    use gtk::gdk::ModifierType as M;
-    assert!(pdf_shortcut_modifiers(M::CONTROL_MASK));
-    assert!(pdf_shortcut_modifiers(M::CONTROL_MASK | M::LOCK_MASK));
-    assert!(!pdf_shortcut_modifiers(M::empty()));
-    assert!(!pdf_shortcut_modifiers(M::CONTROL_MASK | M::SHIFT_MASK));
-    assert!(!pdf_shortcut_modifiers(M::CONTROL_MASK | M::ALT_MASK));
+fn pdf_text_keys_ignore_latch_bits_but_reject_shift_and_alt() {
+    let press = |key, modifiers| KeyPress::from_signal(key, 0, modifiers);
+    for (key, binding) in [(Key::a, SELECT_ALL), (Key::c, COPY)] {
+        assert!(press(key, M::CONTROL_MASK).is(binding));
+        assert!(press(key, M::CONTROL_MASK | M::LOCK_MASK).is(binding));
+        assert!(!press(key, M::empty()).is(binding));
+        assert!(!press(key, M::CONTROL_MASK | M::SHIFT_MASK).is(binding));
+        assert!(!press(key, M::CONTROL_MASK | M::ALT_MASK).is(binding));
+    }
 }

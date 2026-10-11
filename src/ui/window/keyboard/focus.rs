@@ -1,19 +1,20 @@
 // SPDX-License-Identifier: MIT
 
-use gtk::{
-    gdk::{Key, ModifierType as Modifiers},
-    glib::Propagation,
-    prelude::*,
-};
+use gtk::{gdk::ModifierType as Modifiers, glib::Propagation, prelude::*};
 
 use super::{Dispatcher, KeyEvent, KeyResult};
 use crate::{
     app::Browser,
     ui::{
         browser_modes::BrowserMode,
+        focus_navigation::{arrow_direction, plain_tab_direction},
+        keys::{SHORTCUT_MODIFIERS, bindings::*},
         window::{sidebar_focus_direction, vim_focus_direction},
     },
 };
+
+/// Shift and Super ride along with arrows that move focus between controls.
+const FOCUS_MODIFIERS: Modifiers = Modifiers::SHIFT_MASK.union(Modifiers::SUPER_MASK);
 
 impl Dispatcher {
     pub(super) fn focus_navigation(&self, browser: &Browser, event: &mut KeyEvent) -> KeyResult {
@@ -34,8 +35,7 @@ impl Dispatcher {
         if self.type_to_search.preferences.tenxer_mode() || self.focus_in_popover() {
             return None;
         }
-        let direction =
-            crate::ui::focus_navigation::plain_tab_direction(event.key, event.modifiers)?;
+        let direction = plain_tab_direction(&event.press)?;
         self.view
             .default_tab(direction)
             .then_some(Propagation::Stop)
@@ -45,15 +45,15 @@ impl Dispatcher {
         if event.text_has_focus() || self.focus_in_popover() {
             return None;
         }
-        let tab = crate::ui::focus_navigation::plain_tab_direction(event.key, event.modifiers);
+        let tab = plain_tab_direction(&event.press);
         if self.view.item_view_has_focus() && tab == Some(gtk::DirectionType::TabForward) {
             if self.top_bar.focus_first() {
                 self.window.set_focus_visible(true);
             }
             return Some(Propagation::Stop);
         }
-        let arrow = crate::ui::focus_navigation::arrow_direction(event.key);
-        let vim = vim_focus_direction(event.key);
+        let arrow = arrow_direction(&event.press, SHORTCUT_MODIFIERS);
+        let vim = vim_focus_direction(&event.press);
         if tab.is_none() && arrow.is_none() && vim.is_none() {
             return None;
         }
@@ -82,18 +82,18 @@ impl Dispatcher {
         if !event.without(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK) {
             return None;
         }
-        match event.key {
-            Key::h | Key::j | Key::Down => {
-                self.view.focus_items_from_header();
-            }
-            Key::Left => {
-                self.view.move_header_focus(gtk::DirectionType::Left);
-            }
-            Key::l | Key::Right => {
-                self.view.move_header_focus(gtk::DirectionType::Right);
-            }
-            Key::Return | Key::KP_Enter | Key::space => return None,
-            _ => {}
+        let press = &event.press;
+        if press.is_any(&[VIM_LEFT, VIM_DOWN, DOWN.ignoring(FOCUS_MODIFIERS)]) {
+            self.view.focus_items_from_header();
+        } else if press.is(LEFT.ignoring(FOCUS_MODIFIERS)) {
+            self.view.move_header_focus(gtk::DirectionType::Left);
+        } else if press.is_any(&[VIM_RIGHT, RIGHT.ignoring(FOCUS_MODIFIERS)]) {
+            self.view.move_header_focus(gtk::DirectionType::Right);
+        } else if press.is_any(&[
+            ENTER.ignoring(FOCUS_MODIFIERS),
+            SPACE.ignoring(FOCUS_MODIFIERS),
+        ]) {
+            return None;
         }
         Some(Propagation::Stop)
     }
@@ -108,7 +108,7 @@ impl Dispatcher {
             .and_then(|focused| focused.ancestor(gtk::Popover::static_type()))
             .and_downcast::<gtk::Popover>()?;
         if popover.has_css_class("column-popover")
-            && let Some(direction) = vim_focus_direction(event.key)
+            && let Some(direction) = vim_focus_direction(&event.press)
         {
             popover.child_focus(direction);
             return Some(Propagation::Stop);
@@ -117,26 +117,20 @@ impl Dispatcher {
     }
 
     fn top_bar_navigation(&self, browser: &Browser, event: &KeyEvent) -> KeyResult {
-        if !self.top_bar.has_focus()
-            || event.text_has_focus()
-            || !event.without(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK | Modifiers::SHIFT_MASK)
-        {
+        if !self.top_bar.has_focus() || event.text_has_focus() {
             return None;
         }
-        match event.key {
-            Key::Left => {
-                self.top_bar.move_focus(gtk::DirectionType::Left);
+        let press = &event.press;
+        if press.is(LEFT.ignoring(Modifiers::SUPER_MASK)) {
+            self.top_bar.move_focus(gtk::DirectionType::Left);
+        } else if press.is(RIGHT.ignoring(Modifiers::SUPER_MASK)) {
+            self.top_bar.move_focus(gtk::DirectionType::Right);
+        } else if press.is(DOWN.ignoring(Modifiers::SUPER_MASK)) {
+            if !self.top_bar.return_to_sidebar() {
+                browser.focus_active();
             }
-            Key::Right => {
-                self.top_bar.move_focus(gtk::DirectionType::Right);
-            }
-            Key::Down => {
-                if !self.top_bar.return_to_sidebar() {
-                    browser.focus_active();
-                }
-            }
-            Key::Up => {}
-            _ => return None,
+        } else if !press.is(UP.ignoring(Modifiers::SUPER_MASK)) {
+            return None;
         }
         Some(Propagation::Stop)
     }
@@ -147,15 +141,16 @@ impl Dispatcher {
         {
             return None;
         }
-        match event.key {
-            Key::h | Key::Left => return self.header_left(event),
-            Key::l | Key::Right => {
-                self.view.move_header_focus(gtk::DirectionType::Right);
-            }
-            Key::j | Key::Down => {
-                self.view.focus_items_from_header();
-            }
-            _ => return None,
+        let press = event.press;
+        if press.is_any(&[VIM_LEFT, LEFT.ignoring(FOCUS_MODIFIERS)]) {
+            return self.header_left(event);
+        }
+        if press.is_any(&[VIM_RIGHT, RIGHT.ignoring(FOCUS_MODIFIERS)]) {
+            self.view.move_header_focus(gtk::DirectionType::Right);
+        } else if press.is_any(&[VIM_DOWN, DOWN.ignoring(FOCUS_MODIFIERS)]) {
+            self.view.focus_items_from_header();
+        } else {
+            return None;
         }
         Some(Propagation::Stop)
     }
@@ -180,7 +175,7 @@ impl Dispatcher {
         {
             return None;
         }
-        let direction = sidebar_focus_direction(event.key)?;
+        let direction = sidebar_focus_direction(&event.press, FOCUS_MODIFIERS)?;
         if direction == gtk::DirectionType::Right {
             self.sidebar.restore(browser, true);
         } else if direction == gtk::DirectionType::Up && !event.shift() {

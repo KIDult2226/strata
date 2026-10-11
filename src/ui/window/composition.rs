@@ -113,7 +113,7 @@ impl WindowContent {
             window,
             &self.overlay,
             &self.sidebar,
-            keyboard::Bindings {
+            keyboard::DispatcherParts {
                 view: self.browser.clone(),
                 top_bar,
                 preview: self.preview.clone(),

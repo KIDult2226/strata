@@ -9,6 +9,7 @@ use std::{
 };
 
 use gtk::{
+    gdk::ModifierType,
     gio,
     gio::prelude::{EmblemedIconExt as _, VfsExt as _},
     glib,
@@ -33,6 +34,14 @@ use super::{
     },
     browser_modes::{BrowserDensity, BrowserMode},
     controls::{ModalTone, focus_button, message_dialog_description, message_dialog_layout},
+    keys::{
+        self, KeyPress,
+        bindings::{
+            BACKSPACE, DOWN, ENTER, ESCAPE_ANY, FILTER_SLASH, FIRST_ITEM, FOCUS_NEXT, LAST_ITEM,
+            LEFT, PAGE_DOWN, PAGE_UP, RIGHT, SPACE, UP, VIEW_COLUMNS, VIEW_ICONS, VIEW_LIST,
+            VIM_DOWN, VIM_LEFT, VIM_RIGHT, VIM_UP,
+        },
+    },
     modal::{ModalHost, dismiss_modal_layer, modal_layer},
     motion::{animations_enabled, emphasized_deceleration},
     preferences::PreferenceManager,
@@ -158,7 +167,7 @@ pub(super) fn chooser_keys(
     ChooserKeys::new(
         window,
         sidebar,
-        keyboard::Bindings {
+        keyboard::DispatcherParts {
             view: view.clone(),
             top_bar,
             preview: preview.clone(),
@@ -451,158 +460,47 @@ enum SinglePaneArrow {
 
 fn single_pane_arrow_action(
     mode: BrowserMode,
-    key: gtk::gdk::Key,
-    modifiers: gtk::gdk::ModifierType,
+    press: &KeyPress,
     at_left_edge: bool,
     sidebar_visible: bool,
 ) -> Option<SinglePaneArrow> {
-    use gtk::gdk::{Key, ModifierType};
-    if mode == BrowserMode::Columns
-        || modifiers.intersects(ModifierType::ALT_MASK | ModifierType::SUPER_MASK)
-    {
+    // GTK moves or extends the selection with Ctrl and Shift arrows.
+    const NATIVE: ModifierType = ModifierType::CONTROL_MASK.union(ModifierType::SHIFT_MASK);
+    if mode == BrowserMode::Columns {
         return None;
     }
-    let plain = !modifiers.intersects(ModifierType::CONTROL_MASK | ModifierType::SHIFT_MASK);
-    match key {
-        Key::Left if plain && at_left_edge && sidebar_visible => Some(SinglePaneArrow::Sidebar),
-        Key::Left | Key::Right if mode == BrowserMode::List => Some(SinglePaneArrow::Stay),
-        Key::Left | Key::Right | Key::Up | Key::Down => Some(SinglePaneArrow::Native),
-        _ => None,
+    let horizontal = press.is_any(&[LEFT.ignoring(NATIVE), RIGHT.ignoring(NATIVE)]);
+    if press.is(LEFT) && at_left_edge && sidebar_visible {
+        Some(SinglePaneArrow::Sidebar)
+    } else if horizontal && mode == BrowserMode::List {
+        Some(SinglePaneArrow::Stay)
+    } else if horizontal || press.is_any(&[UP.ignoring(NATIVE), DOWN.ignoring(NATIVE)]) {
+        Some(SinglePaneArrow::Native)
+    } else {
+        None
     }
 }
 
-pub(super) fn is_browser_navigation_key(
-    key: gtk::gdk::Key,
-    modifiers: gtk::gdk::ModifierType,
-) -> bool {
-    if modifiers
-        .intersects(gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SUPER_MASK)
-    {
-        return false;
-    }
-    matches!(
-        key,
-        gtk::gdk::Key::j
-            | gtk::gdk::Key::k
-            | gtk::gdk::Key::h
-            | gtk::gdk::Key::l
-            | gtk::gdk::Key::Up
-            | gtk::gdk::Key::Down
-            | gtk::gdk::Key::Left
-            | gtk::gdk::Key::Right
-            | gtk::gdk::Key::Home
-            | gtk::gdk::Key::End
-            | gtk::gdk::Key::KP_Home
-            | gtk::gdk::Key::KP_End
-            | gtk::gdk::Key::Page_Up
-            | gtk::gdk::Key::Page_Down
-            | gtk::gdk::Key::KP_Page_Up
-            | gtk::gdk::Key::KP_Page_Down
-            | gtk::gdk::Key::Tab
-            | gtk::gdk::Key::ISO_Left_Tab
-            | gtk::gdk::Key::Return
-            | gtk::gdk::Key::KP_Enter
-            | gtk::gdk::Key::BackSpace
-    )
+pub(super) fn is_browser_navigation_key(press: &KeyPress) -> bool {
+    const TOLERATED: ModifierType = ModifierType::SHIFT_MASK.union(ModifierType::ALT_MASK);
+    press.is_any(&[VIM_LEFT, VIM_DOWN, VIM_UP, VIM_RIGHT])
+        || [
+            UP, DOWN, LEFT, RIGHT, FIRST_ITEM, LAST_ITEM, PAGE_UP, PAGE_DOWN, FOCUS_NEXT, ENTER,
+            BACKSPACE,
+        ]
+        .into_iter()
+        .any(|key| press.is(key.ignoring(TOLERATED)))
 }
 
-fn page_direction(key: gtk::gdk::Key) -> Option<i32> {
-    match key {
-        gtk::gdk::Key::Page_Up | gtk::gdk::Key::KP_Page_Up => Some(-1),
-        gtk::gdk::Key::Page_Down | gtk::gdk::Key::KP_Page_Down => Some(1),
-        _ => None,
-    }
-}
-
-fn home_end_direction(key: gtk::gdk::Key) -> Option<i32> {
-    match key {
-        gtk::gdk::Key::Home | gtk::gdk::Key::KP_Home => Some(-1),
-        gtk::gdk::Key::End | gtk::gdk::Key::KP_End => Some(1),
-        _ => None,
-    }
-}
-
-fn jump_direction(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> Option<i32> {
-    use gtk::gdk::{Key, ModifierType};
-    if !modifiers.contains(ModifierType::CONTROL_MASK)
-        || modifiers.intersects(
-            ModifierType::SHIFT_MASK | ModifierType::ALT_MASK | ModifierType::SUPER_MASK,
-        )
-    {
-        return None;
-    }
-    match key {
-        Key::Up => Some(-1),
-        Key::Down => Some(1),
-        _ => None,
-    }
-}
-
-fn is_undo_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
-    modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK)
-        && !modifiers
-            .intersects(gtk::gdk::ModifierType::SHIFT_MASK | gtk::gdk::ModifierType::ALT_MASK)
-        && matches!(key, gtk::gdk::Key::z | gtk::gdk::Key::Z)
-}
-
-fn is_redo_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
-    let modifiers = modifiers
-        & (gtk::gdk::ModifierType::CONTROL_MASK
-            | gtk::gdk::ModifierType::SHIFT_MASK
-            | gtk::gdk::ModifierType::ALT_MASK);
-    (modifiers == gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SHIFT_MASK
-        && matches!(key, gtk::gdk::Key::z | gtk::gdk::Key::Z))
-        || (modifiers == gtk::gdk::ModifierType::CONTROL_MASK
-            && matches!(key, gtk::gdk::Key::y | gtk::gdk::Key::Y))
-}
-
-fn is_native_editing_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
-    modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK)
-        && !modifiers
-            .intersects(gtk::gdk::ModifierType::SHIFT_MASK | gtk::gdk::ModifierType::ALT_MASK)
-        && matches!(
-            key,
-            gtk::gdk::Key::a | gtk::gdk::Key::c | gtk::gdk::Key::v | gtk::gdk::Key::x
-        )
-}
-
-pub(super) fn type_to_search_query(
-    key: gtk::gdk::Key,
-    modifiers: gtk::gdk::ModifierType,
-) -> Option<TypeToSearchQuery> {
+pub(super) fn type_to_search_query(press: &KeyPress) -> Option<TypeToSearchQuery> {
     // Space belongs to quick preview; focused text fields handle their own spaces.
-    if key == gtk::gdk::Key::space
-        || modifiers.intersects(
-            gtk::gdk::ModifierType::CONTROL_MASK
-                | gtk::gdk::ModifierType::ALT_MASK
-                | gtk::gdk::ModifierType::SUPER_MASK,
-        )
-    {
+    if press.is(SPACE.ignoring(ModifierType::SHIFT_MASK)) {
         return None;
     }
-    if key == gtk::gdk::Key::slash {
+    if press.is(FILTER_SLASH) {
         return Some(TypeToSearchQuery::Empty);
     }
-    key.to_unicode()
-        .filter(|character| !character.is_control())
-        .map(TypeToSearchQuery::Character)
-}
-
-fn is_open_terminal_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
-    modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::ALT_MASK)
-        && !modifiers
-            .intersects(gtk::gdk::ModifierType::SHIFT_MASK | gtk::gdk::ModifierType::SUPER_MASK)
-        && matches!(key, gtk::gdk::Key::t | gtk::gdk::Key::T)
-}
-
-fn is_toggle_hidden_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
-    modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK)
-        && !modifiers
-            .intersects(gtk::gdk::ModifierType::SHIFT_MASK | gtk::gdk::ModifierType::ALT_MASK)
-        && matches!(
-            key,
-            gtk::gdk::Key::h | gtk::gdk::Key::H | gtk::gdk::Key::period
-        )
+    press.text().map(TypeToSearchQuery::Character)
 }
 
 const DEFAULT_ACCELS: &[(&str, &[&str])] = &[
@@ -630,71 +528,25 @@ pub(super) fn install_mode_accelerators(application: &gtk::Application, tenxer: 
     }
 }
 
-fn is_refresh_shortcut(key: gtk::gdk::Key) -> bool {
-    key == gtk::gdk::Key::F5
+/// Arrows held with any of `tolerated`, then exact **h j k l**.
+fn sidebar_focus_direction(
+    press: &KeyPress,
+    tolerated: ModifierType,
+) -> Option<gtk::DirectionType> {
+    super::focus_navigation::arrow_direction(press, tolerated)
+        .or_else(|| vim_focus_direction(press))
 }
 
-const RENAME_EXCLUDED_MODIFIERS: gtk::gdk::ModifierType = gtk::gdk::ModifierType::ALT_MASK
-    .union(gtk::gdk::ModifierType::SHIFT_MASK)
-    .union(gtk::gdk::ModifierType::SUPER_MASK);
-
-pub(super) fn is_rename_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
-    if modifiers.intersects(RENAME_EXCLUDED_MODIFIERS) {
-        return false;
-    }
-    let control = modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK);
-    match key {
-        gtk::gdk::Key::F2 => !control,
-        gtk::gdk::Key::r | gtk::gdk::Key::R => control,
-        _ => false,
-    }
-}
-
-pub(super) fn is_sidebar_focus_shortcut(
-    key: gtk::gdk::Key,
-    modifiers: gtk::gdk::ModifierType,
-) -> bool {
-    modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SHIFT_MASK)
-        && !modifiers.contains(gtk::gdk::ModifierType::ALT_MASK)
-        && matches!(key, gtk::gdk::Key::b | gtk::gdk::Key::B)
-}
-
-pub(super) fn is_context_menu_shortcut(
-    key: gtk::gdk::Key,
-    modifiers: gtk::gdk::ModifierType,
-) -> bool {
-    let modifiers = modifiers
-        & (gtk::gdk::ModifierType::SHIFT_MASK
-            | gtk::gdk::ModifierType::CONTROL_MASK
-            | gtk::gdk::ModifierType::ALT_MASK
-            | gtk::gdk::ModifierType::SUPER_MASK
-            | gtk::gdk::ModifierType::HYPER_MASK
-            | gtk::gdk::ModifierType::META_MASK);
-    match key {
-        gtk::gdk::Key::Menu => modifiers.is_empty(),
-        gtk::gdk::Key::F10 => modifiers == gtk::gdk::ModifierType::SHIFT_MASK,
-        _ => false,
-    }
-}
-
-fn sidebar_focus_direction(key: gtk::gdk::Key) -> Option<gtk::DirectionType> {
-    match key {
-        gtk::gdk::Key::Left => Some(gtk::DirectionType::Left),
-        gtk::gdk::Key::Right => Some(gtk::DirectionType::Right),
-        gtk::gdk::Key::Up => Some(gtk::DirectionType::Up),
-        gtk::gdk::Key::Down => Some(gtk::DirectionType::Down),
-        _ => vim_focus_direction(key),
-    }
-}
-
-pub(super) fn vim_focus_direction(key: gtk::gdk::Key) -> Option<gtk::DirectionType> {
-    match key {
-        gtk::gdk::Key::h => Some(gtk::DirectionType::Left),
-        gtk::gdk::Key::j => Some(gtk::DirectionType::Down),
-        gtk::gdk::Key::k => Some(gtk::DirectionType::Up),
-        gtk::gdk::Key::l => Some(gtk::DirectionType::Right),
-        _ => None,
-    }
+pub(super) fn vim_focus_direction(press: &KeyPress) -> Option<gtk::DirectionType> {
+    [
+        (VIM_LEFT, gtk::DirectionType::Left),
+        (VIM_DOWN, gtk::DirectionType::Down),
+        (VIM_UP, gtk::DirectionType::Up),
+        (VIM_RIGHT, gtk::DirectionType::Right),
+    ]
+    .into_iter()
+    .find(|(key, _)| press.is(*key))
+    .map(|(_, direction)| direction)
 }
 
 pub(super) fn visible_modal_layer(window: &impl IsA<gtk::Window>) -> Option<gtk::Widget> {
@@ -779,13 +631,15 @@ pub(super) fn apply_browser_mode(
     preferences.set_browser_mode(mode);
 }
 
-pub(super) fn browser_mode_for_digit(key: gtk::gdk::Key) -> Option<BrowserMode> {
-    match key {
-        gtk::gdk::Key::_1 | gtk::gdk::Key::KP_1 => Some(BrowserMode::Columns),
-        gtk::gdk::Key::_2 | gtk::gdk::Key::KP_2 => Some(BrowserMode::Icons),
-        gtk::gdk::Key::_3 | gtk::gdk::Key::KP_3 => Some(BrowserMode::List),
-        _ => None,
-    }
+pub(super) fn browser_mode_for_digit(press: &KeyPress) -> Option<BrowserMode> {
+    [
+        (VIEW_COLUMNS, BrowserMode::Columns),
+        (VIEW_ICONS, BrowserMode::Icons),
+        (VIEW_LIST, BrowserMode::List),
+    ]
+    .into_iter()
+    .find(|(view, _)| press.is(*view))
+    .map(|(_, mode)| mode)
 }
 
 pub(super) fn build_appearance_menu(
@@ -3440,8 +3294,8 @@ fn confirm_forget_cached_password(
     let escape = gtk::EventControllerKey::new();
     let escape_dismiss = dismiss;
     let escape_handler = on_cancel;
-    escape.connect_key_pressed(move |_, key, _, _| {
-        if key != gtk::gdk::Key::Escape {
+    keys::on_press(&escape, move |_, press| {
+        if !press.is(ESCAPE_ANY) {
             return glib::Propagation::Proceed;
         }
         if escape_dismiss()

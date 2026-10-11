@@ -9,15 +9,16 @@
 use std::rc::Rc;
 
 use gtk::{
-    gdk::{Key, ModifierType as Modifiers},
+    gdk::ModifierType as Modifiers,
     glib::{self, Propagation},
 };
 
-use super::{Dispatcher, KeyResult, command_modifiers, items::is_modifier_key};
+use super::{Dispatcher, KeyResult};
 use crate::{
     app::Browser,
     model::Location,
     ui::{
+        keys::{KeyPress, bindings::*},
         tenxer_mode::{Chord, Prompt},
         window::home_directory,
     },
@@ -40,36 +41,49 @@ pub(in crate::ui::window) enum GoTarget {
 
 /// Resolves the second key of **g**. `pins` are the visible PINNED rows in
 /// sidebar display order.
-pub(in crate::ui::window) fn go_target(key: Key, pins: &[Location]) -> Option<GoTarget> {
+pub(in crate::ui::window) fn go_target(press: &KeyPress, pins: &[Location]) -> Option<GoTarget> {
     let place = |location, validate| Some(GoTarget::Place { location, validate });
-    match key {
-        Key::g => Some(GoTarget::FirstItem),
-        Key::f => Some(GoTarget::HitFolder),
-        Key::space | Key::KP_Space => Some(GoTarget::Prompt),
-        Key::plus | Key::KP_Add => Some(GoTarget::Pin(true)),
-        Key::minus | Key::KP_Subtract => Some(GoTarget::Pin(false)),
-        Key::h => place(Location::local(home_directory()), false),
-        Key::c => config_folder(),
-        Key::t => place(Location::uri("trash:///"), false),
-        Key::n => place(Location::uri("network:///"), true),
-        Key::r => place(Location::uri("recent:///"), false),
-        Key::d => user_folder(glib::UserDirectory::Downloads, "No Downloads folder"),
-        Key::k => user_folder(glib::UserDirectory::Documents, "No Documents folder"),
-        Key::m => user_folder(glib::UserDirectory::Music, "No Music folder"),
-        Key::p => user_folder(glib::UserDirectory::Pictures, "No Pictures folder"),
-        Key::v => user_folder(glib::UserDirectory::Videos, "No Videos folder"),
-        _ => {
-            let number = pin_number(key)?;
-            Some(match pins.get(number - 1) {
-                Some(location) => GoTarget::Place {
-                    location: location.clone(),
-                    validate: true,
-                },
-                None => GoTarget::Missing(
-                    rust_i18n::t!("No pin %{number}", number = number).into_owned(),
-                ),
-            })
-        }
+    if press.is(GO_FIRST) {
+        Some(GoTarget::FirstItem)
+    } else if press.is(GO_FOLLOW) {
+        Some(GoTarget::HitFolder)
+    } else if press.is(GO_PROMPT.ignoring(Modifiers::SHIFT_MASK)) {
+        Some(GoTarget::Prompt)
+    } else if press.is(GO_PIN) {
+        Some(GoTarget::Pin(true))
+    } else if press.is(GO_UNPIN) {
+        Some(GoTarget::Pin(false))
+    } else if press.is(GO_HOME) {
+        place(Location::local(home_directory()), false)
+    } else if press.is(GO_CONFIG) {
+        config_folder()
+    } else if press.is(GO_TRASH) {
+        place(Location::uri("trash:///"), false)
+    } else if press.is(GO_NETWORK) {
+        place(Location::uri("network:///"), true)
+    } else if press.is(GO_RECENT) {
+        place(Location::uri("recent:///"), false)
+    } else if press.is(GO_DOWNLOADS) {
+        user_folder(glib::UserDirectory::Downloads, "No Downloads folder")
+    } else if press.is(GO_DOCUMENTS) {
+        user_folder(glib::UserDirectory::Documents, "No Documents folder")
+    } else if press.is(GO_MUSIC) {
+        user_folder(glib::UserDirectory::Music, "No Music folder")
+    } else if press.is(GO_PICTURES) {
+        user_folder(glib::UserDirectory::Pictures, "No Pictures folder")
+    } else if press.is(GO_VIDEOS) {
+        user_folder(glib::UserDirectory::Videos, "No Videos folder")
+    } else {
+        let number = usize::from(press.digit_in(PIN_NUMBERS)?);
+        Some(match pins.get(number - 1) {
+            Some(location) => GoTarget::Place {
+                location: location.clone(),
+                validate: true,
+            },
+            None => {
+                GoTarget::Missing(rust_i18n::t!("No pin %{number}", number = number).into_owned())
+            }
+        })
     }
 }
 
@@ -97,58 +111,34 @@ fn user_folder(directory: glib::UserDirectory, missing: &str) -> Option<GoTarget
     )
 }
 
-fn pin_number(key: Key) -> Option<usize> {
-    let digit = match key {
-        Key::_1 | Key::KP_1 => 1,
-        Key::_2 | Key::KP_2 => 2,
-        Key::_3 | Key::KP_3 => 3,
-        Key::_4 | Key::KP_4 => 4,
-        Key::_5 | Key::KP_5 => 5,
-        Key::_6 | Key::KP_6 => 6,
-        Key::_7 | Key::KP_7 => 7,
-        Key::_8 | Key::KP_8 => 8,
-        Key::_9 | Key::KP_9 => 9,
-        _ => return None,
-    };
-    Some(digit)
-}
-
 impl Dispatcher {
     /// Runs ahead of every other 10xer key so a pending chord has one consumer.
-    pub(super) fn tenxer_chord(
-        &self,
-        browser: &Rc<Browser>,
-        key: Key,
-        modifiers: Modifiers,
-    ) -> KeyResult {
+    pub(super) fn tenxer_chord(&self, browser: &Rc<Browser>, press: &KeyPress) -> KeyResult {
         let chord = self.shortcuts.armed_chord()?;
-        if is_modifier_key(key) {
+        if press.is_modifier() {
             return Some(Propagation::Proceed);
         }
-        let mods = command_modifiers(modifiers);
         self.shortcuts.cancel_chord();
         // Settings opens over a canceled chord.
-        if key == Key::comma && mods == Modifiers::CONTROL_MASK {
+        if press.is(SETTINGS) {
             return None;
         }
-        if key == Key::Escape && mods.is_empty() {
+        if press.is(ESCAPE) {
             return Some(Propagation::Stop);
         }
-        // '+' requires Shift on many keyboard layouts.
         let completed = match chord {
-            _ if !(mods - Modifiers::SHIFT_MASK).is_empty() => false,
-            Chord::Sort => self.complete_sort(key),
-            Chord::Go => self.complete_go(browser, key),
-            Chord::PreviewTop if key == Key::g => self.preview_to_top(),
+            Chord::Sort => self.complete_sort(press),
+            Chord::Go => self.complete_go(browser, press),
+            Chord::PreviewTop if press.is(GO_FIRST) => self.preview_to_top(),
             Chord::PreviewTop => {
-                go_target(key, &[]).is_some() && {
+                go_target(press, &[]).is_some() && {
                     self.return_from_preview(browser);
-                    self.complete_go(browser, key)
+                    self.complete_go(browser, press)
                 }
             }
-            Chord::Copy => self.complete_copy(key),
-            Chord::Action => self.complete_action(key),
-            Chord::Tabs => self.complete_tab(key),
+            Chord::Copy => self.complete_copy(press),
+            Chord::Action => self.complete_action(press),
+            Chord::Tabs => self.complete_tab(press),
         };
         if !completed {
             self.shortcuts
@@ -157,23 +147,24 @@ impl Dispatcher {
         Some(Propagation::Stop)
     }
 
-    fn complete_tab(&self, key: Key) -> bool {
-        let (action, parameter) = match key {
-            Key::n => ("win.new-tab", None),
-            Key::x => ("win.close-tab", None),
-            Key::t => ("win.previous-tab", None),
-            _ => {
-                let Some(index) = super::super::composition::tab_index(key) else {
-                    return false;
-                };
-                ("win.select-tab", Some(glib::Variant::from(index as u32)))
-            }
+    fn complete_tab(&self, press: &KeyPress) -> bool {
+        let (action, parameter) = if press.is(TAB_CHORD_NEW) {
+            ("win.new-tab", None)
+        } else if press.is(TAB_CHORD_CLOSE) {
+            ("win.close-tab", None)
+        } else if press.is(TAB_CHORD_PREVIOUS) {
+            ("win.previous-tab", None)
+        } else if let Some(digit) = press.digit_in(TAB_CHORD_NUMBERS) {
+            let index = super::super::composition::tab_index(digit);
+            ("win.select-tab", Some(glib::Variant::from(index as u32)))
+        } else {
+            return false;
         };
         gtk::prelude::WidgetExt::activate_action(&self.window, action, parameter.as_ref()).is_ok()
     }
 
-    fn complete_go(&self, browser: &Rc<Browser>, key: Key) -> bool {
-        let Some(target) = go_target(key, &self.sidebar.state.visible_pins()) else {
+    fn complete_go(&self, browser: &Rc<Browser>, press: &KeyPress) -> bool {
+        let Some(target) = go_target(press, &self.sidebar.state.visible_pins()) else {
             return false;
         };
         match target {

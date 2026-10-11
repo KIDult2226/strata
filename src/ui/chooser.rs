@@ -56,9 +56,17 @@ use super::{
     window::{
         ChooserKeys, ChooserPolicy, MIN_SIDEBAR_WIDTH, SIDEBAR_WIDTH, SidebarView,
         build_appearance_menu, build_sidebar, home_directory, install_modal_focus_trap,
-        is_sidebar_focus_shortcut, vim_focus_direction, visible_modal_layer,
+        vim_focus_direction, visible_modal_layer,
     },
 };
+use super::{
+    focus_navigation::{arrow_direction, plain_tab_direction},
+    keys::{self, KeyPress, SHORTCUT_MODIFIERS, bindings::*},
+};
+use gtk::gdk::ModifierType;
+
+/// Shift and Super ride along with arrows and keys that move focus or the cursor.
+const FOCUS_MODIFIERS: ModifierType = ModifierType::SHIFT_MASK.union(ModifierType::SUPER_MASK);
 
 type Completion = Box<dyn FnOnce(ashpd::backend::Result<SelectedFiles>)>;
 type DestinationValidator = Rc<dyn Fn(&Path) -> Result<PathBuf, String>>;
@@ -1135,8 +1143,8 @@ impl ChooserState {
         });
         let escape = gtk::EventControllerKey::new();
         let cancel = layout.cancel.clone();
-        escape.connect_key_pressed(move |_, key, _, _| {
-            if key == gtk::gdk::Key::Escape {
+        keys::on_press(&escape, move |_, press| {
+            if press.is(ESCAPE_ANY) {
                 cancel.emit_clicked();
                 glib::Propagation::Stop
             } else {
@@ -2250,10 +2258,7 @@ fn install_shortcuts(
     let header = header.clone();
     let preview = preview.clone();
     let focus_before_sidebar = Rc::new(RefCell::new(None::<gtk::Widget>));
-    keys.connect_key_pressed(move |_, key, _, modifiers| {
-        let Some(state) = weak.upgrade() else {
-            return glib::Propagation::Proceed;
-        };
+    let handle = move |state: &Rc<ChooserState>, press: &KeyPress| -> glib::Propagation {
         let preferences = PreferenceManager::shared();
         if let Some(layer) = visible_modal_layer(&state.window) {
             let focused = gtk::prelude::RootExt::focus(&state.window);
@@ -2265,24 +2270,25 @@ fn install_shortcuts(
         let focused = gtk::prelude::RootExt::focus(&state.window);
         if preferences.tenxer_mode()
             && (state.name_has_focus(focused.as_ref()) || state.view.location_has_focus())
-            && !matches!(key, gtk::gdk::Key::F1 | gtk::gdk::Key::Escape)
-            && !(modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK)
-                && modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK)
-                && matches!(key, gtk::gdk::Key::m | gtk::gdk::Key::M))
+            && !press.is_any(&[
+                REFERENCE.ignoring(SHORTCUT_MODIFIERS),
+                ESCAPE_ANY,
+                TENXER_MODE,
+            ])
         {
             return glib::Propagation::Proceed;
         }
-        if let Some(result) = tenxer.handle(key, modifiers) {
+        if let Some(result) = tenxer.handle(press) {
             return result;
         }
-        if let Some(size) = preferences.text_size().for_shortcut(key, modifiers) {
+        if let Some(size) = preferences.text_size().for_shortcut(press) {
             preferences.set_text_size(size);
             return glib::Propagation::Stop;
         }
         let browser = state.view.browser();
-        let control = modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK);
-        let alt = modifiers.contains(gtk::gdk::ModifierType::ALT_MASK);
-        let shift = modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK);
+        let held = press.modifiers();
+        let control = held.contains(ModifierType::CONTROL_MASK);
+        let alt = held.contains(ModifierType::ALT_MASK);
         if focused
             .as_ref()
             .and_then(|focused| focused.ancestor(gtk::Popover::static_type()))
@@ -2290,7 +2296,7 @@ fn install_shortcuts(
         {
             return glib::Propagation::Proceed;
         }
-        if super::window::is_context_menu_shortcut(key, modifiers)
+        if press.is_any(&[CONTEXT_MENU, CONTEXT_MENU_F10])
             && !focused.as_ref().is_some_and(|widget| {
                 super::focus_navigation::editable(widget)
                     || super::focus_navigation::in_popover(widget)
@@ -2306,13 +2312,15 @@ fn install_shortcuts(
                 super::focus_navigation::editable(widget)
                     || super::focus_navigation::in_popover(widget)
             })
-            && preview.handle_video_key(key, modifiers)
+            && preview.handle_video_key(press)
         {
             return glib::Propagation::Stop;
         }
         // Filtered rows own navigation, not the hidden directory selection.
-        if matches!(key, gtk::gdk::Key::Up | gtk::gdk::Key::Down)
-            && state.view.selected_search_results().is_some()
+        if press.is_any(&[
+            UP.ignoring(SHORTCUT_MODIFIERS),
+            DOWN.ignoring(SHORTCUT_MODIFIERS),
+        ]) && state.view.selected_search_results().is_some()
             && !focused.as_ref().is_some_and(|widget| {
                 super::focus_navigation::editable(widget)
                     || super::focus_navigation::in_popover(widget)
@@ -2321,31 +2329,25 @@ fn install_shortcuts(
             state.window.set_focus_visible(true);
             return glib::Propagation::Proceed;
         }
-        let original_key = key;
-        let key = super::focus_navigation::navigation_key(
-            key,
-            modifiers,
+        let original = *press;
+        let press = &super::focus_navigation::navigation_key(
+            press,
             PreferenceManager::shared().type_to_search(),
             focused.as_ref(),
         );
-        let vim_navigation = key != original_key;
+        let vim_navigation = *press != original;
         if !focused
             .as_ref()
             .is_some_and(super::focus_navigation::in_popover)
-            && (super::window::is_sidebar_focus_shortcut(key, modifiers)
+            && (press.is(SIDEBAR_FOCUS)
                 || (!focused
                     .as_ref()
                     .is_some_and(super::focus_navigation::editable)
-                    && super::window::is_browser_navigation_key(key, modifiers)))
+                    && super::window::is_browser_navigation_key(press)))
         {
             state.view.keyboard_navigation();
         }
-        if !control
-            && !alt
-            && !shift
-            && !modifiers.contains(gtk::gdk::ModifierType::SUPER_MASK)
-            && super::focus_navigation::arrow_direction(key).is_some()
-        {
+        if arrow_direction(press, ModifierType::empty()).is_some() {
             state.window.set_focus_visible(true);
             if focused
                 .as_ref()
@@ -2364,7 +2366,7 @@ fn install_shortcuts(
         let sidebar_has_focus = focused.as_ref().is_some_and(|focused| {
             focused == &sidebar_widget || focused.is_ancestor(&sidebar_widget)
         });
-        if key == gtk::gdk::Key::Escape {
+        if press.is(ESCAPE_ANY) {
             if let Some(popover) = focused
                 .as_ref()
                 .and_then(|widget| widget.ancestor(gtk::Popover::static_type()))
@@ -2400,7 +2402,7 @@ fn install_shortcuts(
             state.cancel();
             return glib::Propagation::Stop;
         }
-        if super::window::is_rename_shortcut(key, modifiers)
+        if press.is_any(&[RENAME, RENAME_R])
             && browser.selected_entries().len() == 1
             && !focused.as_ref().is_some_and(|widget| {
                 super::focus_navigation::editable(widget)
@@ -2410,10 +2412,7 @@ fn install_shortcuts(
         {
             return glib::Propagation::Stop;
         }
-        if alt
-            && !control
-            && !shift
-            && matches!(key, gtk::gdk::Key::Return | gtk::gdk::Key::KP_Enter)
+        if press.is(PROPERTIES.ignoring(ModifierType::SUPER_MASK))
             && state.view.item_view_has_focus()
             && !state.view.new_entry_is_active()
             && !state.view.rename_is_active()
@@ -2424,13 +2423,7 @@ fn install_shortcuts(
         if state.view.new_entry_is_active() || state.view.rename_is_active() {
             return glib::Propagation::Proceed;
         }
-        if key == gtk::gdk::Key::space
-            && !modifiers.intersects(
-                gtk::gdk::ModifierType::CONTROL_MASK
-                    | gtk::gdk::ModifierType::ALT_MASK
-                    | gtk::gdk::ModifierType::SUPER_MASK
-                    | gtk::gdk::ModifierType::SHIFT_MASK,
-            )
+        if press.is(SPACE)
             && let Some(entry) = state.view.selected_search_result()
         {
             if state.view.activate_directory_on_space() {
@@ -2442,19 +2435,14 @@ fn install_shortcuts(
             );
             return glib::Propagation::Stop;
         }
-        if control
-            && !shift
-            && !alt
-            && matches!(key, gtk::gdk::Key::f | gtk::gdk::Key::F)
-            && state.view.show_filter()
-        {
+        if press.is(FILTER) && state.view.show_filter() {
             return glib::Propagation::Stop;
         }
-        if control && matches!(key, gtk::gdk::Key::l | gtk::gdk::Key::L) {
+        if press.is(LOCATION) {
             state.view.begin_location_edit();
             return glib::Propagation::Stop;
         }
-        if is_sidebar_focus_shortcut(key, modifiers) {
+        if press.is(SIDEBAR_FOCUS) {
             if preferences.tenxer_mode() {
                 if !sidebar_toggle.is_active() {
                     return glib::Propagation::Stop;
@@ -2494,12 +2482,11 @@ fn install_shortcuts(
             }
             return glib::Propagation::Stop;
         }
-        let toggles_sidebar = if preferences.tenxer_mode() {
-            matches!(key, gtk::gdk::Key::n | gtk::gdk::Key::N)
+        if press.is(if preferences.tenxer_mode() {
+            TENXER_SIDEBAR
         } else {
-            matches!(key, gtk::gdk::Key::b | gtk::gdk::Key::B)
-        };
-        if control && !shift && toggles_sidebar {
+            SIDEBAR
+        }) {
             if state
                 .destination_host
                 .as_ref()
@@ -2512,7 +2499,7 @@ fn install_shortcuts(
         if state.view.location_has_focus() {
             return glib::Propagation::Proceed;
         }
-        if is_folder_accept_shortcut(key, modifiers)
+        if press.is(CHOOSE_FOLDER.ignoring(ModifierType::SUPER_MASK))
             && state.view.item_view_has_focus()
             && matches!(
                 &state.request.kind,
@@ -2525,7 +2512,7 @@ fn install_shortcuts(
             state.accept();
             return glib::Propagation::Stop;
         }
-        if control && shift && matches!(key, gtk::gdk::Key::n | gtk::gdk::Key::N) {
+        if press.is(NEW_FOLDER) {
             if state
                 .destination_host
                 .as_ref()
@@ -2535,9 +2522,7 @@ fn install_shortcuts(
             }
             return glib::Propagation::Stop;
         }
-        if control
-            && !shift
-            && key == gtk::gdk::Key::a
+        if press.is(SELECT_ALL)
             && state.view.item_view_has_focus()
             && matches!(
                 &state.request.kind,
@@ -2547,37 +2532,31 @@ fn install_shortcuts(
             state.view.select_all();
             return glib::Propagation::Stop;
         }
-        if key == gtk::gdk::Key::F5 {
+        if press.is(REFRESH.ignoring(SHORTCUT_MODIFIERS)) {
             if let Some(depth) = browser.active_depth() {
                 browser.retry_column(depth);
             }
             return glib::Propagation::Stop;
         }
-        if control
-            && !shift
-            && !alt
-            && matches!(
-                key,
-                gtk::gdk::Key::h | gtk::gdk::Key::H | gtk::gdk::Key::period
-            )
-        {
+        if press.is_any(&[HIDDEN_FILES, HIDDEN_FILES_PERIOD]) {
             browser.toggle_hidden();
             return glib::Propagation::Stop;
         }
-        if key == gtk::gdk::Key::Delete
-            && !control
-            && !alt
+        let permanent = if press.is(DELETE.ignoring(ModifierType::SUPER_MASK)) {
+            Some(false)
+        } else if press.is(DELETE_PERMANENTLY.ignoring(ModifierType::SUPER_MASK)) {
+            Some(true)
+        } else {
+            None
+        };
+        if let Some(permanent) = permanent
             && state.view.item_view_has_focus()
             && !state.view.filter_has_focus()
-            && state.view.confirm_delete(shift)
+            && state.view.confirm_delete(permanent)
         {
             return glib::Propagation::Stop;
         }
-        if control
-            && !shift
-            && !alt
-            && let Some(mode) = super::window::browser_mode_for_digit(key)
-        {
+        if let Some(mode) = super::window::browser_mode_for_digit(press) {
             super::window::apply_browser_mode(&state.view, &PreferenceManager::shared(), mode);
             return glib::Propagation::Stop;
         }
@@ -2590,15 +2569,14 @@ fn install_shortcuts(
             .and_downcast::<gtk::Popover>()
             .filter(|popover| popover.has_css_class("column-popover"));
         if let Some(popover) = column_popover
-            && !control
-            && !alt
-            && let Some(direction) = vim_focus_direction(key)
+            && let Some(direction) = vim_focus_direction(press)
         {
             popover.child_focus(direction);
             return glib::Propagation::Stop;
         }
+        let tab = plain_tab_direction(press);
         if !preferences.tenxer_mode()
-            && let Some(direction) = super::focus_navigation::plain_tab_direction(key, modifiers)
+            && let Some(direction) = tab
             && !focused
                 .as_ref()
                 .is_some_and(super::focus_navigation::in_popover)
@@ -2607,7 +2585,7 @@ fn install_shortcuts(
             return glib::Propagation::Stop;
         }
         if preferences.tenxer_mode()
-            && super::focus_navigation::plain_tab_direction(key, modifiers).is_some()
+            && tab.is_some()
             && let Some(filename) = state.filename.as_ref()
         {
             let in_header = focused
@@ -2627,8 +2605,7 @@ fn install_shortcuts(
             if super::focus_navigation::in_popover(focused) {
                 return glib::Propagation::Proceed;
             }
-            if !shift
-                && matches!(key, gtk::gdk::Key::Return | gtk::gdk::Key::KP_Enter)
+            if press.is(ENTER.ignoring(ModifierType::SUPER_MASK))
                 && super::focus_navigation::activate(state.window.upcast_ref())
             {
                 return glib::Propagation::Stop;
@@ -2639,57 +2616,42 @@ fn install_shortcuts(
         }
         if preferences.tenxer_mode()
             && state.view.item_view_has_focus()
-            && super::focus_navigation::plain_tab_direction(key, modifiers)
-                == Some(gtk::DirectionType::TabForward)
+            && tab == Some(gtk::DirectionType::TabForward)
         {
             if header.child_focus(gtk::DirectionType::TabForward) {
                 state.window.set_focus_visible(true);
             }
             return glib::Propagation::Stop;
         }
-        if preferences.tenxer_mode()
-            && super::focus_navigation::plain_tab_direction(key, modifiers).is_some()
-        {
+        if preferences.tenxer_mode() && tab.is_some() {
             if !super::focus_navigation::contains_widget(&state.view.widget(), focused.as_ref()) {
                 browser.focus_active();
             }
             return glib::Propagation::Stop;
         }
         let mut header_left_boundary = false;
-        if state.view.header_actions_have_focus() && !control && !alt {
-            match key {
-                gtk::gdk::Key::h | gtk::gdk::Key::Left => {
-                    if state.view.move_header_focus(gtk::DirectionType::Left)
-                        || preferences.tenxer_mode()
-                    {
-                        return glib::Propagation::Stop;
-                    }
-                    header_left_boundary = true;
-                }
-                gtk::gdk::Key::l | gtk::gdk::Key::Right => {
-                    state.view.move_header_focus(gtk::DirectionType::Right);
+        if state.view.header_actions_have_focus() {
+            if press.is_any(&[VIM_LEFT, LEFT.ignoring(FOCUS_MODIFIERS)]) {
+                if state.view.move_header_focus(gtk::DirectionType::Left)
+                    || preferences.tenxer_mode()
+                {
                     return glib::Propagation::Stop;
                 }
-                gtk::gdk::Key::j | gtk::gdk::Key::Down => {
-                    state.view.focus_items_from_header();
-                    return glib::Propagation::Stop;
-                }
-                _ => {}
+                header_left_boundary = true;
+            } else if press.is_any(&[VIM_RIGHT, RIGHT.ignoring(FOCUS_MODIFIERS)]) {
+                state.view.move_header_focus(gtk::DirectionType::Right);
+                return glib::Propagation::Stop;
+            } else if press.is_any(&[VIM_DOWN, DOWN.ignoring(FOCUS_MODIFIERS)]) {
+                state.view.focus_items_from_header();
+                return glib::Propagation::Stop;
             }
         }
         if sidebar_has_focus
             && !preferences.tenxer_mode()
-            && !control
-            && !alt
             && let Some(direction) =
-                vim_focus_direction(key).or_else(|| super::focus_navigation::arrow_direction(key))
+                vim_focus_direction(press).or_else(|| arrow_direction(press, FOCUS_MODIFIERS))
         {
-            if preferences.tenxer_mode() {
-                browser.focus_active();
-                if super::focus_navigation::arrow_direction(key).is_none() {
-                    return glib::Propagation::Stop;
-                }
-            } else if direction == gtk::DirectionType::Right {
+            if direction == gtk::DirectionType::Right {
                 focus_before_sidebar.borrow_mut().take();
                 browser.focus_active();
             } else if !sidebar_widget.child_focus(direction) && direction == gtk::DirectionType::Up
@@ -2697,28 +2659,23 @@ fn install_shortcuts(
                 sidebar_toggle.grab_focus();
                 state.window.set_focus_visible(true);
             }
-            if !preferences.tenxer_mode() {
-                return glib::Propagation::Stop;
-            }
+            return glib::Propagation::Stop;
         }
-        if key == gtk::gdk::Key::BackSpace
-            && !control
-            && !alt
+        if press.is(BACKSPACE.ignoring(FOCUS_MODIFIERS))
             && state.view.dismiss_empty_focused_filter()
         {
             return glib::Propagation::Stop;
         }
-        if !control && !alt && !state.view.item_view_has_focus() && !header_left_boundary {
+        if !alt && !state.view.item_view_has_focus() && !header_left_boundary {
             if preferences.tenxer_mode()
-                && (super::focus_navigation::arrow_direction(key).is_some()
-                    || vim_focus_direction(key).is_some())
+                && (arrow_direction(press, FOCUS_MODIFIERS).is_some()
+                    || vim_focus_direction(press).is_some())
             {
                 browser.focus_active();
-                if super::focus_navigation::arrow_direction(key).is_none() {
+                if vim_focus_direction(press).is_some() {
                     return glib::Propagation::Stop;
                 }
-            } else if !shift && let Some(direction) = super::focus_navigation::arrow_direction(key)
-            {
+            } else if let Some(direction) = arrow_direction(press, ModifierType::SUPER_MASK) {
                 if direction == gtk::DirectionType::Up
                     && focused.as_ref().is_some_and(|focused| {
                         let mut widget = Some(focused.clone());
@@ -2742,10 +2699,7 @@ fn install_shortcuts(
                 return glib::Propagation::Proceed;
             }
         }
-        if key == gtk::gdk::Key::Left
-            && !control
-            && !alt
-            && !shift
+        if press.is(LEFT.ignoring(ModifierType::SUPER_MASK))
             && sidebar_toggle.is_active()
             && state.view.item_view_has_focus()
             && state.view.item_at_sidebar_edge()
@@ -2756,11 +2710,8 @@ fn install_shortcuts(
             state.window.set_focus_visible(true);
             return glib::Propagation::Stop;
         }
-        if key == gtk::gdk::Key::space && !control && !alt {
-            if !modifiers
-                .intersects(gtk::gdk::ModifierType::SHIFT_MASK | gtk::gdk::ModifierType::SUPER_MASK)
-                && state.view.activate_directory_on_space()
-            {
+        if press.is(SPACE.ignoring(FOCUS_MODIFIERS)) {
+            if press.is(SPACE) && state.view.activate_directory_on_space() {
                 return glib::Propagation::Stop;
             }
             preview.toggle(
@@ -2769,31 +2720,30 @@ fn install_shortcuts(
             );
             return glib::Propagation::Stop;
         }
-        if key == gtk::gdk::Key::BackSpace && !control && !alt {
+        if press.is(BACKSPACE.ignoring(FOCUS_MODIFIERS)) {
             state.view.navigate_up();
             return glib::Propagation::Stop;
         }
+        let multiple = matches!(
+            &state.request.kind,
+            ChooserKind::Open { multiple: true, .. }
+        );
         if !alt
             && state.view.view_mode() != super::browser_modes::BrowserMode::Columns
-            && let Some(direction) = super::focus_navigation::arrow_direction(key)
+            && let Some(direction) = arrow_direction(press, FOCUS_MODIFIERS)
         {
-            let extend = shift
-                && matches!(
-                    &state.request.kind,
-                    ChooserKind::Open { multiple: true, .. }
-                );
+            let extend = held.contains(ModifierType::SHIFT_MASK) && multiple;
             if state.view.cross_type_group(direction, extend) {
                 return glib::Propagation::Stop;
             }
-            if !shift
-                && key == gtk::gdk::Key::Up
+            if press.is(UP.ignoring(ModifierType::SUPER_MASK))
                 && !PreferenceManager::shared().arrow_navigation_scoped_active()
                 && state.view.focus_header_from_top_item()
             {
                 return glib::Propagation::Stop;
             }
             // Keep GTK's spatial movement, then reconcile selection in visual order.
-            let weak = Rc::downgrade(&state);
+            let weak = Rc::downgrade(state);
             glib::idle_add_local_once(move || {
                 let Some(state) = weak.upgrade() else {
                     return;
@@ -2803,34 +2753,23 @@ fn install_shortcuts(
                 }
                 state.view.synchronize_native_selection(extend);
             });
-            if vim_navigation {
-                super::focus_navigation::activate_native_arrow(&state.window, key);
+            if vim_navigation && let Some(arrow) = super::focus_navigation::spatial_arrow(press) {
+                super::focus_navigation::activate_native_arrow(&state.window, arrow.key());
                 return glib::Propagation::Stop;
             }
             return glib::Propagation::Proceed;
         }
-        if shift
-            && matches!(
-                &state.request.kind,
-                ChooserKind::Open { multiple: true, .. }
-            )
-            && key == gtk::gdk::Key::Up
-        {
+        let alt_super = ModifierType::ALT_MASK.union(ModifierType::SUPER_MASK);
+        if multiple && press.is(EXTEND_UP.ignoring(alt_super)) {
             browser.extend_selection(-1);
             return glib::Propagation::Stop;
         }
-        if shift
-            && matches!(
-                &state.request.kind,
-                ChooserKind::Open { multiple: true, .. }
-            )
-            && key == gtk::gdk::Key::Down
-        {
+        if multiple && press.is(EXTEND_DOWN.ignoring(alt_super)) {
             browser.extend_selection(1);
             return glib::Propagation::Stop;
         }
         if state.view.item_view_has_focus()
-            && let Some(query) = super::window::type_to_search_query(key, modifiers)
+            && let Some(query) = super::window::type_to_search_query(press)
             && preferences.type_to_search()
             && match query {
                 super::window::TypeToSearchQuery::Empty => state.view.show_filter(),
@@ -2841,44 +2780,50 @@ fn install_shortcuts(
         {
             return glib::Propagation::Stop;
         }
-        if !shift
-            && matches!(key, gtk::gdk::Key::k | gtk::gdk::Key::Up)
+        if press.is_any(&[VIM_UP, UP.ignoring(alt_super)])
             && !PreferenceManager::shared().arrow_navigation_scoped_active()
             && state.view.focus_header_from_top_item()
         {
             return glib::Propagation::Stop;
         }
-
-        match (key, alt) {
-            (gtk::gdk::Key::Left, true) => browser.back(),
-            (gtk::gdk::Key::Right, true) => browser.forward(),
-            (gtk::gdk::Key::Up, true) => browser.parent(),
-            (gtk::gdk::Key::Home, true) => {
-                browser.navigate(Location::local(home_directory()));
-            }
-            (gtk::gdk::Key::j | gtk::gdk::Key::Down, false) => browser.move_selection(1),
-            (gtk::gdk::Key::k | gtk::gdk::Key::Up, false) => browser.move_selection(-1),
-            (gtk::gdk::Key::h | gtk::gdk::Key::Left, false)
-                if !control
-                    && state.view.first_column_has_focus()
-                    && sidebar_toggle.is_active()
-                    && !PreferenceManager::shared().arrow_navigation_scoped_active() =>
+        if press.is(HISTORY_BACK.ignoring(FOCUS_MODIFIERS)) {
+            browser.back();
+        } else if press.is(HISTORY_FORWARD.ignoring(FOCUS_MODIFIERS)) {
+            browser.forward();
+        } else if press.is(PARENT_FOLDER.ignoring(FOCUS_MODIFIERS)) {
+            browser.parent();
+        } else if press.is(HOME_FOLDER.ignoring(FOCUS_MODIFIERS)) {
+            browser.navigate(Location::local(home_directory()));
+        } else if press.is_any(&[VIM_DOWN, DOWN.ignoring(FOCUS_MODIFIERS)]) {
+            browser.move_selection(1);
+        } else if press.is_any(&[VIM_UP, UP.ignoring(FOCUS_MODIFIERS)]) {
+            browser.move_selection(-1);
+        } else if press.is_any(&[VIM_LEFT, LEFT.ignoring(FOCUS_MODIFIERS)]) {
+            if state.view.first_column_has_focus()
+                && sidebar_toggle.is_active()
+                && !PreferenceManager::shared().arrow_navigation_scoped_active()
             {
                 focus_before_sidebar.replace(focused.clone());
                 sidebar_state.focus_active_place();
+            } else {
+                state.view.navigate_left();
             }
-            (gtk::gdk::Key::h | gtk::gdk::Key::Left, false) => state.view.navigate_left(),
-            (gtk::gdk::Key::Right, false) if state.view.view_mode() == BrowserMode::Columns => {
-                browser.enter_focused_directory();
+        } else if press.is(RIGHT.ignoring(FOCUS_MODIFIERS))
+            && state.view.view_mode() == BrowserMode::Columns
+        {
+            browser.enter_focused_directory();
+        } else if press.is_any(&[VIM_RIGHT, ENTER.ignoring(FOCUS_MODIFIERS)]) {
+            if !tenxer.confirm_focused() {
+                state.view.activate_focused();
             }
-            (gtk::gdk::Key::l | gtk::gdk::Key::Return | gtk::gdk::Key::KP_Enter, false) => {
-                if !tenxer.confirm_focused() {
-                    state.view.activate_focused();
-                }
-            }
-            _ => return glib::Propagation::Proceed,
+        } else {
+            return glib::Propagation::Proceed;
         }
         glib::Propagation::Stop
+    };
+    keys::on_press(&keys, move |_, press| {
+        weak.upgrade()
+            .map_or(glib::Propagation::Proceed, |state| handle(&state, press))
     });
     window.add_controller(keys.clone());
     let keys = keys.downgrade();
@@ -2887,11 +2832,4 @@ fn install_shortcuts(
             window.remove_controller(&keys);
         }
     });
-}
-
-fn is_folder_accept_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
-    modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK)
-        && !modifiers
-            .intersects(gtk::gdk::ModifierType::SHIFT_MASK | gtk::gdk::ModifierType::ALT_MASK)
-        && matches!(key, gtk::gdk::Key::Return | gtk::gdk::Key::KP_Enter)
 }

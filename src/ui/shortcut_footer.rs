@@ -13,6 +13,15 @@ pub(in crate::ui) use candidates::CandidateKeys;
 use candidates::Candidates;
 use chord_panel::ChordPanel;
 
+use super::keys::{
+    KeyPress,
+    bindings::{
+        COPY, CUT, DOWN, ENTER_ANY_SHIFT, ESCAPE_ANY, FIRST_ITEM, FOCUS_NEXT, FOCUS_PREVIOUS,
+        LAST_ITEM, LEFT, PAGE_DOWN, PAGE_UP, PASTE, REFERENCE, REFERENCE_CATEGORIES,
+        REFERENCE_LIST, REFERENCE_SEARCH, RIGHT, SELECT_ALL, SPACE, TENXER_REFERENCE, UP, VIM_DOWN,
+        VIM_LEFT, VIM_RIGHT, VIM_UP,
+    },
+};
 use super::{
     browser::FilterStatus,
     browser_modes::BrowserMode,
@@ -853,9 +862,9 @@ impl ShortcutFooter {
         let keys = gtk::EventControllerKey::new();
         keys.set_propagation_phase(gtk::PropagationPhase::Capture);
         let shortcuts = footer.clone();
-        keys.connect_key_pressed(move |_, key, _, modifiers| {
+        super::keys::on_press(&keys, move |_, press| {
             shortcuts
-                .handle_key(key, modifiers)
+                .handle_key(press)
                 .unwrap_or(glib::Propagation::Proceed)
         });
         footer.panel.add_controller(keys);
@@ -1333,21 +1342,11 @@ impl ShortcutFooter {
         self.session.is_open()
     }
 
-    pub fn handle_key(
-        &self,
-        key: gdk::Key,
-        modifiers: gdk::ModifierType,
-    ) -> Option<glib::Propagation> {
-        let command_modifiers = modifiers.intersects(
-            gdk::ModifierType::CONTROL_MASK
-                | gdk::ModifierType::ALT_MASK
-                | gdk::ModifierType::SUPER_MASK,
-        );
+    pub(in crate::ui) fn handle_key(&self, press: &KeyPress) -> Option<glib::Propagation> {
+        const SHIFT: gdk::ModifierType = gdk::ModifierType::SHIFT_MASK;
         let reference_open = self.session.is_open();
-        let f1 = key == gdk::Key::F1
-            && !command_modifiers
-            && !modifiers.contains(gdk::ModifierType::SHIFT_MASK);
-        let tilde = self.tilde_toggles(key, modifiers, reference_open);
+        let f1 = press.is(REFERENCE);
+        let tilde = self.tilde_toggles(press, reference_open);
         if self.prompt_has_focus() && !f1 && !tilde && !reference_open {
             return None;
         }
@@ -1362,25 +1361,21 @@ impl ShortcutFooter {
         if !reference_open {
             return None;
         }
-        if key == gdk::Key::Escape {
+        if press.is(ESCAPE_ANY) {
             self.session.close();
             return Some(glib::Propagation::Stop);
         }
-        let keys = modifiers
-            & (gdk::ModifierType::CONTROL_MASK
-                | gdk::ModifierType::ALT_MASK
-                | gdk::ModifierType::SUPER_MASK
-                | gdk::ModifierType::SHIFT_MASK);
-        if keys == gdk::ModifierType::CONTROL_MASK {
-            let focused = match key {
-                gdk::Key::b => self.focus_category(),
-                gdk::Key::f => self.focus_search(),
-                gdk::Key::l => self.focus_results(),
-                _ => false,
-            };
-            if focused {
-                return Some(glib::Propagation::Stop);
-            }
+        let focused = if press.is(REFERENCE_CATEGORIES) {
+            self.focus_category()
+        } else if press.is(REFERENCE_SEARCH) {
+            self.focus_search()
+        } else if press.is(REFERENCE_LIST) {
+            self.focus_results()
+        } else {
+            false
+        };
+        if focused {
+            return Some(glib::Propagation::Stop);
         }
         let focus = self.search.root().and_then(|root| root.focus());
         let search_focused = focus.as_ref().is_some_and(|focus| {
@@ -1392,9 +1387,8 @@ impl ShortcutFooter {
         let list_focused = focus.as_ref().is_some_and(|focus| {
             focus == self.scroll.upcast_ref::<gtk::Widget>() || focus.is_ancestor(&self.scroll)
         });
-        if matches!(key, gdk::Key::Tab | gdk::Key::ISO_Left_Tab) && !command_modifiers {
-            let backwards =
-                keys.contains(gdk::ModifierType::SHIFT_MASK) || key == gdk::Key::ISO_Left_Tab;
+        if press.is_any(&[FOCUS_NEXT, FOCUS_PREVIOUS]) {
+            let backwards = press.is(FOCUS_PREVIOUS);
             let current = if search_focused {
                 ReferenceArea::Search
             } else if category_focused {
@@ -1417,47 +1411,44 @@ impl ShortcutFooter {
             }
             return Some(glib::Propagation::Stop);
         }
-        if !command_modifiers && category_focused {
-            let direction = match key {
-                gdk::Key::Up
-                | gdk::Key::KP_Up
-                | gdk::Key::Left
-                | gdk::Key::KP_Left
-                | gdk::Key::k
-                | gdk::Key::h => Some(-1),
-                gdk::Key::Down
-                | gdk::Key::KP_Down
-                | gdk::Key::Right
-                | gdk::Key::KP_Right
-                | gdk::Key::j
-                | gdk::Key::l => Some(1),
-                gdk::Key::Home => Some(-100),
-                gdk::Key::End => Some(100),
-                _ => None,
-            };
+        if category_focused {
+            let direction =
+                if press.is_any(&[VIM_UP, VIM_LEFT, UP.ignoring(SHIFT), LEFT.ignoring(SHIFT)]) {
+                    Some(-1)
+                } else if press.is_any(&[
+                    VIM_DOWN,
+                    VIM_RIGHT,
+                    DOWN.ignoring(SHIFT),
+                    RIGHT.ignoring(SHIFT),
+                ]) {
+                    Some(1)
+                } else if press.is(FIRST_ITEM.ignoring(SHIFT)) {
+                    Some(-100)
+                } else if press.is(LAST_ITEM.ignoring(SHIFT)) {
+                    Some(100)
+                } else {
+                    None
+                };
             if let Some(direction) = direction {
                 self.move_category(direction);
                 return Some(glib::Propagation::Stop);
             }
-            if matches!(key, gdk::Key::Return | gdk::Key::KP_Enter | gdk::Key::space) {
+            if press.is_any(&[ENTER_ANY_SHIFT, SPACE.ignoring(SHIFT)]) {
                 return Some(glib::Propagation::Proceed);
             }
         }
-        if !command_modifiers
-            && ((list_focused)
-                || (search_focused
-                    && matches!(
-                        key,
-                        gdk::Key::Up | gdk::Key::Down | gdk::Key::Page_Up | gdk::Key::Page_Down
-                    )))
-            && self.scroll_reference(key)
-        {
+        let scrolls_search = [UP, DOWN, PAGE_UP, PAGE_DOWN]
+            .into_iter()
+            .any(|key| press.is(key.ignoring(SHIFT)));
+        if (list_focused || (search_focused && scrolls_search)) && self.scroll_reference(press) {
             return Some(glib::Propagation::Stop);
         }
+        let commands = gdk::ModifierType::CONTROL_MASK
+            | gdk::ModifierType::ALT_MASK
+            | gdk::ModifierType::SUPER_MASK;
         if search_focused
-            && (!command_modifiers
-                || (keys == gdk::ModifierType::CONTROL_MASK
-                    && matches!(key, gdk::Key::a | gdk::Key::c | gdk::Key::v | gdk::Key::x)))
+            && (!press.modifiers().intersects(commands)
+                || press.is_any(&[SELECT_ALL, COPY, PASTE, CUT]))
         {
             return Some(glib::Propagation::Proceed);
         }
@@ -1515,7 +1506,8 @@ impl ShortcutFooter {
         buttons[next].emit_clicked();
     }
 
-    fn scroll_reference(&self, key: gdk::Key) -> bool {
+    fn scroll_reference(&self, press: &KeyPress) -> bool {
+        const SHIFT: gdk::ModifierType = gdk::ModifierType::SHIFT_MASK;
         let adjustment = self.scroll.vadjustment();
         let page = adjustment.page_size().max(1.0);
         let step = if adjustment.step_increment() >= 1.0 {
@@ -1528,51 +1520,32 @@ impl ShortcutFooter {
         } else {
             page
         };
-        let delta = match key {
-            gdk::Key::Up | gdk::Key::KP_Up | gdk::Key::Left | gdk::Key::KP_Left | gdk::Key::k => {
-                -step
-            }
-            gdk::Key::Down
-            | gdk::Key::KP_Down
-            | gdk::Key::Right
-            | gdk::Key::KP_Right
-            | gdk::Key::j => step,
-            gdk::Key::Page_Up | gdk::Key::KP_Page_Up => -page_step,
-            gdk::Key::Page_Down | gdk::Key::KP_Page_Down => page_step,
-            gdk::Key::Home => {
-                adjustment.set_value(adjustment.lower());
-                return true;
-            }
-            gdk::Key::End => {
-                adjustment.set_value((adjustment.upper() - page).max(adjustment.lower()));
-                return true;
-            }
-            _ => return false,
+        let delta = if press.is_any(&[VIM_UP, UP.ignoring(SHIFT), LEFT.ignoring(SHIFT)]) {
+            -step
+        } else if press.is_any(&[VIM_DOWN, DOWN.ignoring(SHIFT), RIGHT.ignoring(SHIFT)]) {
+            step
+        } else if press.is(PAGE_UP.ignoring(SHIFT)) {
+            -page_step
+        } else if press.is(PAGE_DOWN.ignoring(SHIFT)) {
+            page_step
+        } else if press.is(FIRST_ITEM.ignoring(SHIFT)) {
+            adjustment.set_value(adjustment.lower());
+            return true;
+        } else if press.is(LAST_ITEM.ignoring(SHIFT)) {
+            adjustment.set_value((adjustment.upper() - page).max(adjustment.lower()));
+            return true;
+        } else {
+            return false;
         };
         let limit = (adjustment.upper() - adjustment.page_size()).max(adjustment.lower());
         adjustment.set_value((adjustment.value() + delta).clamp(adjustment.lower(), limit));
         true
     }
 
-    fn tilde_toggles(
-        &self,
-        key: gdk::Key,
-        modifiers: gdk::ModifierType,
-        reference_open: bool,
-    ) -> bool {
-        if !super::preferences::PreferenceManager::shared().tenxer_mode() {
-            return false;
-        }
-        if modifiers.intersects(
-            gdk::ModifierType::CONTROL_MASK
-                | gdk::ModifierType::ALT_MASK
-                | gdk::ModifierType::SUPER_MASK,
-        ) {
-            return false;
-        }
-        let tilde = key == gdk::Key::asciitilde
-            || (key == gdk::Key::grave && modifiers.contains(gdk::ModifierType::SHIFT_MASK));
-        tilde && (reference_open || !self.prompt_has_focus())
+    fn tilde_toggles(&self, press: &KeyPress, reference_open: bool) -> bool {
+        super::preferences::PreferenceManager::shared().tenxer_mode()
+            && press.is(TENXER_REFERENCE)
+            && (reference_open || !self.prompt_has_focus())
     }
 }
 

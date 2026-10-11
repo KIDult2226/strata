@@ -122,7 +122,7 @@ impl KeyboardFixture {
         keyboard::install(
             &window,
             &sidebar,
-            keyboard::Bindings {
+            keyboard::DispatcherParts {
                 view: view.clone(),
                 top_bar,
                 preview: preview.clone(),

@@ -30,6 +30,26 @@ pub(in crate::ui) enum DocumentScroll {
     End,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(in crate::ui) enum ArchiveMove {
+    Previous,
+    Next,
+    Parent,
+    Open,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(in crate::ui) enum MediaCommand {
+    PlayPause,
+    SeekBack,
+    SeekForward,
+    VolumeUp,
+    VolumeDown,
+    Mute,
+    Previous,
+    Next,
+}
+
 impl PreviewDrawer {
     /// The browser whose Miller columns yield their keyboard-destination bar
     /// while the drawer owns the keys.
@@ -65,8 +85,8 @@ impl PreviewDrawer {
 
     /// Plain media keys for a keyboard-owned media preview, plus `<` / `>` from
     /// the 10xer listing while an audio preview is open.
-    pub(in crate::ui) fn media_key(&self, key: gtk::gdk::Key) -> bool {
-        self.has_video() && self.state.media_command(key)
+    pub(in crate::ui) fn media_key(&self, command: MediaCommand) -> bool {
+        self.has_video() && self.state.media_command(command)
     }
 
     pub(in crate::ui) fn archive_at_root(&self) -> bool {

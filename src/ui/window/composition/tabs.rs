@@ -5,12 +5,18 @@ use std::{
     rc::Rc,
 };
 
-use gtk::{gdk, gio, glib, prelude::*};
+use gtk::{gio, glib, prelude::*};
 
 use crate::{
     adapters::location_for_file,
     model::Location,
-    ui::{blur::BlurBin, browser::BrowserView, preferences::PreferenceManager, tabs_session},
+    ui::{
+        blur::BlurBin,
+        browser::BrowserView,
+        keys::{self, KeyPress, bindings::*},
+        preferences::PreferenceManager,
+        tabs_session,
+    },
 };
 
 use super::{WindowContent, layout, tenxer_splash};
@@ -513,53 +519,27 @@ impl TabWindow {
         self.restoring.set(false);
     }
 
-    fn handle_key(
-        self: &Rc<Self>,
-        key: gdk::Key,
-        modifiers: gdk::ModifierType,
-    ) -> glib::Propagation {
-        use gdk::{Key, ModifierType as M};
-        let mods = modifiers
-            & (M::CONTROL_MASK
-                | M::SHIFT_MASK
-                | M::ALT_MASK
-                | M::SUPER_MASK
-                | M::META_MASK
-                | M::HYPER_MASK);
-        let ctrl_shift = M::CONTROL_MASK | M::SHIFT_MASK;
-        let held = mods
-            | match key {
-                Key::Control_L | Key::Control_R => M::CONTROL_MASK,
-                Key::Shift_L | Key::Shift_R => M::SHIFT_MASK,
-                _ => M::empty(),
-            };
-        self.show_hints(held == ctrl_shift);
-        if self.blocked() || !is_tab_shortcut(key, modifiers) {
+    fn handle_key(self: &Rc<Self>, press: &KeyPress) -> glib::Propagation {
+        // GDK reports a modifier key's state from before its own press.
+        self.show_hints((press.modifiers() | press.modifier_key()) == TAB_NUMBERS.modifiers());
+        if self.blocked() || !is_tab_shortcut(press) {
             return glib::Propagation::Proceed;
         }
         self.active_tab().content.footer.shortcuts.cancel_chord();
-        if mods == M::CONTROL_MASK && matches!(key, Key::t | Key::T) {
+        if press.is(TAB_NEW) {
             self.new_tab();
-        } else if mods == M::CONTROL_MASK && matches!(key, Key::w | Key::W) {
+        } else if press.is(TAB_CLOSE) {
             self.close(self.active.get());
-        } else if mods == M::CONTROL_MASK
-            && matches!(key, Key::Tab | Key::Page_Down | Key::KP_Page_Down)
-        {
+        } else if press.is_any(&[TAB_NEXT, TAB_NEXT_PAGE_DOWN]) {
             self.cycle(1);
-        } else if (mods == M::CONTROL_MASK && matches!(key, Key::Page_Up | Key::KP_Page_Up))
-            || (mods == ctrl_shift && matches!(key, Key::Tab | Key::ISO_Left_Tab))
-        {
+        } else if press.is_any(&[TAB_PREVIOUS, TAB_PREVIOUS_PAGE_UP]) {
             self.cycle(-1);
-        } else if mods == ctrl_shift
-            && let Some(delta) = super::super::page_direction(key)
-        {
-            self.move_active_tab(delta);
-        } else if mods == ctrl_shift
-            && let Some(index) = tab_index(key)
-        {
-            self.select_index(index);
-        } else {
-            return glib::Propagation::Proceed;
+        } else if press.is(TAB_MOVE_LEFT) {
+            self.move_active_tab(-1);
+        } else if press.is(TAB_MOVE_RIGHT) {
+            self.move_active_tab(1);
+        } else if let Some(digit) = press.digit_in(TAB_NUMBERS) {
+            self.select_index(tab_index(digit));
         }
         glib::Propagation::Stop
     }
@@ -568,23 +548,16 @@ impl TabWindow {
         let keys = gtk::EventControllerKey::new();
         keys.set_propagation_phase(gtk::PropagationPhase::Capture);
         let weak = Rc::downgrade(self);
-        keys.connect_key_pressed(move |_, key, _, modifiers| {
-            weak.upgrade().map_or(glib::Propagation::Proceed, |state| {
-                state.handle_key(key, modifiers)
-            })
+        keys::on_press(&keys, move |_, press| {
+            weak.upgrade()
+                .map_or(glib::Propagation::Proceed, |state| state.handle_key(press))
         });
         let weak = Rc::downgrade(self);
-        keys.connect_key_released(move |_, key, _, modifiers| {
+        keys::on_release(&keys, move |_, press| {
             if let Some(state) = weak.upgrade() {
-                use gdk::{Key, ModifierType as M};
-                let mut mods = modifiers;
-                if matches!(key, Key::Control_L | Key::Control_R) {
-                    mods.remove(M::CONTROL_MASK);
-                }
-                if matches!(key, Key::Shift_L | Key::Shift_R) {
-                    mods.remove(M::SHIFT_MASK);
-                }
-                state.show_hints(mods.contains(M::CONTROL_MASK | M::SHIFT_MASK));
+                state.show_hints(
+                    press.modifiers().difference(press.modifier_key()) == TAB_NUMBERS.modifiers(),
+                );
             }
         });
         window.add_controller(keys);
@@ -600,32 +573,17 @@ fn operations_active() -> crate::ui::close_guard::CloseBlocker {
     }
 }
 
-pub(in crate::ui::window) fn is_tab_shortcut(key: gdk::Key, modifiers: gdk::ModifierType) -> bool {
-    use gdk::{Key, ModifierType as M};
-    let mods = modifiers
-        & (M::CONTROL_MASK
-            | M::SHIFT_MASK
-            | M::ALT_MASK
-            | M::SUPER_MASK
-            | M::META_MASK
-            | M::HYPER_MASK);
-    (mods == M::CONTROL_MASK
-        && matches!(
-            key,
-            Key::t
-                | Key::T
-                | Key::w
-                | Key::W
-                | Key::Tab
-                | Key::Page_Up
-                | Key::KP_Page_Up
-                | Key::Page_Down
-                | Key::KP_Page_Down
-        ))
-        || (mods == (M::CONTROL_MASK | M::SHIFT_MASK)
-            && (matches!(key, Key::Tab | Key::ISO_Left_Tab)
-                || super::super::page_direction(key).is_some()
-                || tab_index(key).is_some()))
+pub(in crate::ui::window) fn is_tab_shortcut(press: &KeyPress) -> bool {
+    press.is_any(&[
+        TAB_NEW,
+        TAB_CLOSE,
+        TAB_NEXT,
+        TAB_PREVIOUS,
+        TAB_NEXT_PAGE_DOWN,
+        TAB_PREVIOUS_PAGE_UP,
+        TAB_MOVE_LEFT,
+        TAB_MOVE_RIGHT,
+    ]) || press.digit_in(TAB_NUMBERS).is_some()
 }
 
 fn action_location(parameter: Option<&glib::Variant>) -> Option<Location> {
@@ -633,21 +591,9 @@ fn action_location(parameter: Option<&glib::Variant>) -> Option<Location> {
     location_for_file(&gio::File::for_uri(&uri))
 }
 
-pub(in crate::ui::window) fn tab_index(key: gdk::Key) -> Option<usize> {
-    use gdk::Key;
-    Some(match key {
-        Key::_1 | Key::exclam | Key::KP_1 => 0,
-        Key::_2 | Key::at | Key::KP_2 => 1,
-        Key::_3 | Key::numbersign | Key::KP_3 => 2,
-        Key::_4 | Key::dollar | Key::KP_4 => 3,
-        Key::_5 | Key::percent | Key::KP_5 => 4,
-        Key::_6 | Key::asciicircum | Key::KP_6 => 5,
-        Key::_7 | Key::ampersand | Key::KP_7 => 6,
-        Key::_8 | Key::asterisk | Key::KP_8 => 7,
-        Key::_9 | Key::parenleft | Key::KP_9 => 8,
-        Key::_0 | Key::parenright | Key::KP_0 => 9,
-        _ => return None,
-    })
+/// The tab a digit selects: 1 is the first tab and 0 the tenth.
+pub(in crate::ui::window) fn tab_index(digit: u8) -> usize {
+    (usize::from(digit) + 9) % 10
 }
 
 fn tab_label(location: Option<&Location>) -> String {

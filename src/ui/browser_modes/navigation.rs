@@ -3,6 +3,7 @@
 use std::collections::VecDeque;
 
 use super::*;
+use crate::ui::keys::{self, SHORTCUT_MODIFIERS, bindings::FOCUS_NEXT};
 
 const HISTORY_LIMIT: usize = 128;
 
@@ -404,14 +405,7 @@ fn focus_within(
 
 /// Tab moves focus through GTK, past the commands that cancel a restore themselves.
 fn moves_focus(event: &gtk::gdk::Event) -> bool {
-    event
-        .downcast_ref::<gtk::gdk::KeyEvent>()
-        .is_some_and(|key| {
-            matches!(
-                key.keyval(),
-                gtk::gdk::Key::Tab | gtk::gdk::Key::ISO_Left_Tab | gtk::gdk::Key::KP_Tab
-            )
-        })
+    keys::read_event(event).is_some_and(|press| press.is(FOCUS_NEXT.ignoring(SHORTCUT_MODIFIERS)))
 }
 
 /// The pane's directory, once it loaded without an error; a load still in progress

@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
+use crate::ui::keys::bindings::{
+    ENTER, ESCAPE, FIND_IN_PREVIEW, PREVIOUS_MATCH, TENXER_FIND_IN_PREVIEW,
+};
 
 #[derive(Clone)]
 enum Target {
@@ -333,28 +336,18 @@ impl PreviewDrawer {
     }
 
     /// 10xer opens find with `/` so Ctrl+F keeps paging the document.
-    pub(in crate::ui) fn handle_find_key(
-        &self,
-        key: gtk::gdk::Key,
-        modifiers: gtk::gdk::ModifierType,
-        tenxer: bool,
-    ) -> bool {
-        use gtk::gdk::{Key, ModifierType as Modifiers};
+    pub(in crate::ui) fn handle_find_key(&self, press: &KeyPress, tenxer: bool) -> bool {
         let focused = self.state.pane.root().and_then(|root| root.focus());
-        if !self.owns_focus(focused.as_ref())
-            || modifiers.intersects(Modifiers::ALT_MASK | Modifiers::SUPER_MASK)
-        {
+        if !self.owns_focus(focused.as_ref()) {
             return false;
         }
-        let control = modifiers.contains(Modifiers::CONTROL_MASK);
-        let shift = modifiers.contains(Modifiers::SHIFT_MASK);
         let in_find = focused
             .as_ref()
             .is_some_and(|focus| focus.is_ancestor(&self.state.find.widget));
         let opens = if tenxer {
-            !control && !in_find && matches!(key, Key::slash | Key::KP_Divide)
+            !in_find && press.is(TENXER_FIND_IN_PREVIEW)
         } else {
-            control && !shift && matches!(key, Key::f | Key::F)
+            press.is(FIND_IN_PREVIEW)
         };
         if opens {
             return self.state.open_find();
@@ -362,12 +355,12 @@ impl PreviewDrawer {
         if !self.state.find.widget.is_visible() {
             return false;
         }
-        if key == Key::Escape && !control && !shift {
+        if press.is(ESCAPE) {
             self.state.close_find();
             return true;
         }
-        if in_find && !control && matches!(key, Key::Return | Key::KP_Enter) {
-            self.state.find.step(shift);
+        if in_find && press.is_any(&[ENTER, PREVIOUS_MATCH]) {
+            self.state.find.step(press.is(PREVIOUS_MATCH));
             return true;
         }
         false

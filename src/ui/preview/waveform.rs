@@ -5,13 +5,19 @@ use std::{
     rc::Rc,
 };
 
-use gtk::{gdk, glib, graphene, prelude::*, subclass::prelude::*};
+use gtk::{glib, graphene, prelude::*, subclass::prelude::*};
 
 use crate::{
     media::peaks::{BUCKETS, rms},
-    ui::preview::audio::{
-        clock,
-        palette::{follow_theme, palette, with_alpha},
+    ui::{
+        keys::{
+            self,
+            bindings::{LEFT, RIGHT},
+        },
+        preview::audio::{
+            clock,
+            palette::{follow_theme, palette, with_alpha},
+        },
     },
 };
 
@@ -335,30 +341,32 @@ impl Waveform {
         self.add_controller(motion);
 
         let keys = gtk::EventControllerKey::new();
-        keys.connect_key_pressed(glib::clone!(
-            #[weak(rename_to = waveform)]
-            self,
-            #[upgrade_or]
-            glib::Propagation::Proceed,
-            move |_, key, _, modifiers| {
-                let delta = match key {
-                    gdk::Key::Left | gdk::Key::KP_Left => -KEY_SEEK_US,
-                    gdk::Key::Right | gdk::Key::KP_Right => KEY_SEEK_US,
-                    _ => return glib::Propagation::Proceed,
-                };
-                if !modifiers.is_empty() {
-                    return glib::Propagation::Proceed;
+        keys::on_press(
+            &keys,
+            glib::clone!(
+                #[weak(rename_to = waveform)]
+                self,
+                #[upgrade_or]
+                glib::Propagation::Proceed,
+                move |_, press| {
+                    let delta = if press.is(LEFT) {
+                        -KEY_SEEK_US
+                    } else if press.is(RIGHT) {
+                        KEY_SEEK_US
+                    } else {
+                        return glib::Propagation::Proceed;
+                    };
+                    let timestamp = waveform
+                        .imp()
+                        .media
+                        .borrow()
+                        .as_ref()
+                        .map_or(0, |media| media.timestamp());
+                    waveform.seek_to(timestamp + delta);
+                    glib::Propagation::Stop
                 }
-                let timestamp = waveform
-                    .imp()
-                    .media
-                    .borrow()
-                    .as_ref()
-                    .map_or(0, |media| media.timestamp());
-                waveform.seek_to(timestamp + delta);
-                glib::Propagation::Stop
-            }
-        ));
+            ),
+        );
         self.add_controller(keys);
     }
 

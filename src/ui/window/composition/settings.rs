@@ -14,6 +14,7 @@ use crate::{
     ui::{
         blur::BlurBin,
         browser::WeakBrowserView,
+        keys::{self, bindings::SETTINGS},
         preferences::PreferenceManager,
         settings::{self, InstallGuard, UpdateNoticeHandler},
     },
@@ -60,11 +61,8 @@ pub(super) fn install(
     });
     let shortcut = gtk::EventControllerKey::new();
     let active_root = content.overlay.downgrade();
-    shortcut.connect_key_pressed(move |_, key, _, modifiers| {
-        if !active_root.upgrade().is_some_and(|root| root.is_mapped())
-            || key != gtk::gdk::Key::comma
-            || !modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK)
-        {
+    keys::on_press(&shortcut, move |_, press| {
+        if !active_root.upgrade().is_some_and(|root| root.is_mapped()) || !press.is(SETTINGS) {
             return glib::Propagation::Proceed;
         }
         launcher.show();
