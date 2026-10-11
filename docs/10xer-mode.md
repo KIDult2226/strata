@@ -24,6 +24,11 @@ in its accessible description.
 Paste destinations, cursor versus filled selection, and pointer ownership stay
 as in [keyboard navigation](keyboard-navigation.md).
 
+The keys work on every keyboard layout. On Russian and other non-Latin layouts a
+letter key acts as the Latin letter it carries, so the key that types **о** is
+**j**. Digits count by their position on the top row, and Caps Lock never changes
+a command. See [keyboard shortcuts](keyboard-shortcuts.md) for the full rules.
+
 ## Enter and leave
 
 | Key | Action |

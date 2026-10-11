@@ -219,6 +219,16 @@ pass before merge.
   regressions with `./scripts/test-headless.py i18n::`, plus affected behavioral
   tests as required by the validation policy above.
 
+## Keyboard shortcuts
+
+- Read key input only through `ui::keys` (`keys::on_press`, `keys::on_release`,
+  `keys::read_event`); `clippy.toml` rejects raw key signals elsewhere.
+- Define every shortcut as a constant in the `ui::keys::bindings` catalog and
+  match it with `press.is(…)` or `press.digit(…)`. Never compare raw keyvals or
+  typed text to recognize a command.
+- Never type a key label by hand. F1 rows, hints, tooltips, and menus render
+  catalog bindings with `keys::label`. Follow `docs/keyboard-shortcuts.md`.
+
 ## UI controls
 
 - Reuse existing control builders, shared bindings, and CSS classes for dropdowns, buttons, toggles, and segmented controls before creating new ones. Match their hover, active, focus, disabled, and theme states; do not style a new control as a generic form field when an existing button style applies.

@@ -28,13 +28,21 @@ Shortcuts follow the key's label first, then its physical position:
   Shift. **Ctrl+1**, **Ctrl+Shift+1** and 10xer digits work on AZERTY, where the
   row types `&é"'(` without Shift, and on layouts whose Shift+digit symbols
   differ from US. Keypad digits count as digits when Num Lock is on.
+- **Keypad keys act as the main keys** they share a label with: keypad Enter,
+  arrows, Home, End, Page Up, Page Down, Insert, Delete, Tab, Space, `+`, `−`,
+  `*`, `/` and `=`.
 - **Caps Lock and Num Lock never change a shortcut.**
 - **Shift** is part of a letter shortcut: **Ctrl+Shift+K** is not **Ctrl+K**.
   For symbols, the Shift needed to type the symbol is ignored, so **Ctrl++**
   matches whether or not the layout needs Shift for `+`, and **Ctrl+.** works on
   AZERTY, where `.` needs Shift.
 - **Modifiers match exactly** over Ctrl, Alt, Shift and Super. **Ctrl+C** does
-  not fire for **Ctrl+Alt+C**.
+  not fire for **Ctrl+Alt+C**. Navigation and dismiss keys (Escape, Enter,
+  arrows, Tab, Home, End, Page Up, Page Down, Delete, Backspace, function keys)
+  may also accept other held modifiers where a surface allows them; **Escape**
+  closes a dialog whatever is held. Letter and symbol shortcuts never do. The one
+  digit that does is **0** in media, which accepts the Shift AZERTY needs to
+  type it.
 - **Typing is unaffected.** Type-to-search, filter fields, rename fields, and
   footer prompts receive the character the layout produced.
 - **Text fields** follow the same rules for copy, cut, paste, select all, undo,
@@ -80,10 +88,22 @@ to the handler.
 
 - `is(binding)` reports whether the press matches a `Binding`. Use it for
   every command, including navigation keys such as Escape, Return, and arrows.
+  `is_any(bindings)` tries several.
 - `digit(modifiers)` returns the digit-row or keypad digit when the modifiers
   match exactly, for ordinal commands such as view modes and tab numbers.
+  `digit_in(digits)` does the same for a catalog digit range.
 - `text()` returns the typed character, for typing consumers only.
-- `is_modifier()` reports a bare modifier key press.
+- `is_modifier()` reports a bare modifier key press, and `modifier_key()` which
+  modifier it is.
+- `modifiers()` returns the held Ctrl, Alt, Shift and Super, for policies that
+  depend on what is held rather than on one binding.
+- `used_fallback()` reports a key recognized only through the layout fallback,
+  which GTK's own bindings miss.
+- `read_as(binding)` reads a press as another key, for keys that stand in for
+  others, such as **h j k l** for arrows.
+
+`keys::read_event(&event)` reads a key event that reached another controller,
+such as `EventControllerLegacy`.
 
 ### `Binding` and the binding catalog
 
@@ -91,32 +111,51 @@ A `Binding` is a canonical key plus exact modifiers: `Binding::plain(Key::j)`,
 `Binding::ctrl(Key::c)`, `Binding::ctrl_shift(Key::k)`, or
 `Binding::new(key, modifiers)`. Letters are lowercase with Shift explicit.
 Symbol bindings name the symbol (`Key::plus`), never the key that types it on a
-US keyboard.
+US keyboard. `binding.ignoring(modifiers)` lets a navigation or dismiss key also
+match while those modifiers are held; its label does not change.
 
 Every shortcut is a named constant in the binding catalog,
-`ui::keys::bindings`, grouped by area: `pub const COPY: Binding =
-Binding::ctrl(Key::c);`. Handlers match catalog constants, and the F1 reference
-(`ui/shortcut_reference.rs`), context-menu hints, and footer hints refer to the
-same constants. Dispatch logic stays in the handlers; the catalog only defines
-keys.
+`ui::keys::bindings`, with one file per area under `src/ui/keys/bindings/`. The
+`catalog!` macro declares each area's constants, such as
+`COPY: Binding = Binding::ctrl(Key::c);`, in a block that says which F1 maps
+list them: `listed` (both), `default_only`, `tenxer_only`, or `unlisted`. A
+chord's second key names its first with `, after GO`. Handlers match catalog
+constants, and the F1 reference (`ui/shortcut_reference.rs`), context-menu
+hints, and footer hints refer to the same constants. Dispatch logic stays in the
+handlers; the catalog only defines keys.
 
 What a reference row or hint shows is a `Keys` value, never free text:
 
 - one binding: **Ctrl+C**
 - alternatives: **F2 / Ctrl+R**
 - a chord: **g h**
-- a digit range with its modifiers: **Ctrl+Shift+1–9 / 0**
+- a digit range with its modifiers or chord prefix: **Ctrl+Shift+1–9 / 0**,
+  **t 1–9 / t 0**
+- alternatives of different shapes: **g g / Home**
 
 ### Labels
 
-`keys::label` is the only code that turns bindings into text. Key names come
-from one translated table (`keys.name.*` in every catalog). Context templates
-such as `%{keys} in header` stay translatable and receive the formatted label.
+`keys::label` is the only code that turns bindings into text; `label_in`
+renders a given language, `modifiers_label` held modifiers alone (**hold
+Ctrl+Shift**), and `digit_label` one member of a digit range. Key names come from
+one translated table (`keys.name.*` in every catalog). Context templates such as
+`%{keys} in header` stay translatable and receive the formatted label;
+`shortcut_reference::with_keys` fills one, as tooltips and accessible names do.
+
+Alternatives that share their modifiers write them once (**Ctrl+Alt+← / →**)
+unless a key is a letter (**Ctrl+U / Ctrl+D**). Minus is shown as **−**.
+
+F1 searches `keys::search_text`: the label in the interface language and in
+English, with each alternative also spelled out in full, so **strg+0** and
+**ctrl+0** both find **Strg++ / − / 0**.
 
 Menus display the formatter's text too. GTK formats a menu item's `accel`
 attribute itself: it puts Shift first, capitalizes letters, and uses its own
 translations. So menu rows must not show GTK's rendering of an `accel` string,
-and no code may build an accelerator string by parsing a label.
+and no code may build an accelerator string by parsing a label. A native menu
+row carries its binding's `Binding::accelerator()`, which keeps GTK's
+accessible shortcut, and `present_native_items` replaces GTK's rendering with the
+formatter's label.
 
 ### Normalization
 
@@ -125,13 +164,17 @@ and no code may build an accelerator string by parsing a label.
    lowercased with Shift added back. Keep only Ctrl, Alt, Shift and Super.
 2. If that key is a character outside printable ASCII and the event level is 0
    or 1, replace it with the first printable-ASCII key that
-   `Display::map_keycode` reports for another layout at the same level, then
-   canonicalize it the same way. Otherwise use the built-in US-QWERTY table
-   entry for the keycode. GDK keycodes are evdev codes plus 8 on both X11 and
-   Wayland. If neither source has a Latin key, keep the original.
+   `Display::map_keycode` reports for another layout at the level Shift
+   selects, then canonicalize it the same way. Otherwise use the built-in
+   US-QWERTY table entry for the keycode. The level comes from Shift, not from
+   the event, because Caps Lock raises the event's level for letters. GDK
+   keycodes are evdev codes plus 8 on both X11 and Wayland. If neither source
+   has a Latin key, keep the original.
 3. Digit-row keycodes 10–19 map to 1–9 and 0 regardless of the key they type.
    `digit()` compares the event's modifier state before consumed modifiers are
    removed, so **Ctrl+1** and **Ctrl+Shift+1** stay distinct on every layout.
+4. Keypad keys become the main keys they share a label with. Keypad digits stay
+   keypad keys and count through `digit()` when Num Lock is on.
 
 The common path costs one `match_()` call and a range check. `map_keycode`
 runs only for keys outside ASCII, and nothing is cached, so no keymap-change
@@ -171,10 +214,11 @@ and `xkeysym` duplicate types GDK already provides.
 Search (**Ctrl+K**), jump to folder (**Ctrl+Shift+K**), open terminal
 (**Ctrl+Alt+T**), refresh (**F5**), and arrow scope (**Ctrl+\\**) are bindings in
 the window dispatcher, not GTK application accelerators. The dispatcher checks
-them where GTK used to run its accelerators, after its own stages yield, and
-activates the same guarded `win.*` actions. `add_guarded_window_action` still
-decides whether they run while a modal or an inline edit owns input, and 10xer
-mode availability is a dispatcher check.
+them after its own stages yield the key and activates the same guarded `win.*`
+actions; the key is consumed whenever the action is enabled.
+`add_guarded_window_action` still decides whether they run while a modal or an
+inline edit owns input. 10xer mode leaves jump to folder, open terminal, and
+arrow scope unbound, which the dispatcher checks when the key arrives.
 
 ### Text fields
 
@@ -182,7 +226,12 @@ When a `gtk::Text` or `gtk::TextView` has focus and a press matched an editing
 binding only through the layout fallback, the dispatcher activates the widget's
 own action (`clipboard.cut`, `clipboard.copy`, `clipboard.paste`,
 `selection.select-all`, `text.undo`, `text.redo`) and stops the event. Otherwise
-GTK's own text bindings handle it.
+GTK's own text bindings handle it. The file chooser applies the same rule
+(`edit_focused_text`).
+
+Plain keys that only the fallback recognizes stay text in a focused field: in
+10xer mode the Russian **Ё** key reads as **~** but types **Ё** into the
+location bar or the F1 search instead of toggling the reference.
 
 A focused cell of a document table follows the same rule for copy and select
 all. The table's key handler runs the cell's action, because it owns the
@@ -205,6 +254,11 @@ and **Ctrl+A** clears it first.
    add end-to-end coverage for a new input route.
 
 ## Testing
+
+Rust tests emit `key-pressed` without a GDK event. `KeyPress::from_signal`
+reads such a press as a US-QWERTY press, with Caps Lock matched the way GDK
+matches it, so handler tests stay layout-neutral and the layout cases live in
+the normalizer tests and end-to-end scenarios.
 
 `ui::keys::tests` drives the pure normalizer from hand-written keymap rows for
 US, Russian, Ukrainian, Greek, Hebrew, French AZERTY, German QWERTZ, Dvorak,

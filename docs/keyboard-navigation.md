@@ -8,6 +8,15 @@ Columns have three independent signals:
 
 The destination column has an accent rule across its header, including when the directory is empty. Columns no longer reserve a separate bottom margin for the horizontal scrollbar.
 
+## Keyboard layouts
+
+Every shortcut on this page works on any keyboard layout. Letters follow the
+key's label, or the Latin letter the key carries on Russian and other non-Latin
+layouts, so **Ctrl+C** is the key that types **с** in Russian. Digits count by
+their position on the top row, so **Ctrl+1** works on AZERTY without Shift, and
+Caps Lock never changes a shortcut. See [keyboard shortcuts](keyboard-shortcuts.md)
+for the full rules.
+
 ## Browser tabs
 
 In regular and 10xer modes, **Ctrl+T** opens a tab at the active location,
