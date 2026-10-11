@@ -1718,17 +1718,17 @@ fn layout_fallback_editing_keys_run_the_focused_text_fields_own_actions() {
                 gtk::prelude::RootExt::focus(&fixture.window)
                     .is_some_and(|focus| focus.is_ancestor(&entry))
             });
-            // A Russian-only keymap types Cyrillic on the US A and C keys.
-            let press = |key: Key, keycode: u32| {
-                fixture.keys.emit_by_name::<bool>(
-                    "key-pressed",
-                    &[&key, &keycode, &ModifierType::CONTROL_MASK],
-                )
+            // A Russian-only keymap types Cyrillic on the US A, C, Z and Y keys.
+            let control = ModifierType::CONTROL_MASK;
+            let press = |key: Key, keycode: u32, modifiers: ModifierType| {
+                fixture
+                    .keys
+                    .emit_by_name::<bool>("key-pressed", &[&key, &keycode, &modifiers])
             };
-            assert!(!press(Key::c, 0), "GTK's own Ctrl+C handles ASCII");
-            assert!(press(Key::Cyrillic_ef, 38));
+            assert!(!press(Key::c, 0, control), "GTK's own Ctrl+C handles ASCII");
+            assert!(press(Key::Cyrillic_ef, 38, control));
             assert_eq!(entry.selection_bounds(), Some((0, 5)));
-            assert!(press(Key::Cyrillic_es, 54));
+            assert!(press(Key::Cyrillic_es, 54, control));
             let copied = fixture
                 .window
                 .clipboard()
@@ -1737,6 +1737,31 @@ fn layout_fallback_editing_keys_run_the_focused_text_fields_own_actions() {
                 .and_then(|value| value.get::<String>().ok());
             assert_eq!(copied.as_deref(), Some("draft"));
             assert_eq!(fixture.selected(), [0]);
+
+            // The open F1 reference passes the same editing keys to its search.
+            assert!(fixture.press(Key::F1, ModifierType::empty()));
+            wait_until(|| fixture.shortcuts.reference_is_open());
+            let search = focused_entry(&fixture.window);
+            assert_ne!(search, entry, "the reference search has focus");
+            search.set_text("half");
+            search.set_position(-1);
+            // Typing makes an undoable edit; a programmatic insert does not.
+            search
+                .delegate()
+                .expect("search text")
+                .emit_by_name::<()>("insert-at-cursor", &[&" a page"]);
+            assert!(!press(Key::z, 0, control), "GTK's own Ctrl+Z handles ASCII");
+            assert!(press(Key::Cyrillic_ya, 52, control));
+            assert_eq!(search.text(), "half");
+            assert!(press(
+                Key::Cyrillic_YA,
+                52,
+                control | ModifierType::SHIFT_MASK
+            ));
+            assert_eq!(search.text(), "half a page");
+            assert!(press(Key::Cyrillic_ya, 52, control));
+            assert!(press(Key::Cyrillic_en, 29, control));
+            assert_eq!(search.text(), "half a page");
         },
     );
 }

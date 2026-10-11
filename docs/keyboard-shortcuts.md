@@ -240,7 +240,9 @@ binding only through the layout fallback, the dispatcher activates the widget's
 own action (`clipboard.cut`, `clipboard.copy`, `clipboard.paste`,
 `selection.select-all`, `text.undo`, `text.redo`) and stops the event. Otherwise
 GTK's own text bindings handle it. The file chooser applies the same rule
-(`edit_focused_text`).
+(`edit_focused_text`). `keys::TEXT_EDITING` holds these bindings and their
+actions, and the open F1 reference lets the same bindings reach its search
+field.
 
 Plain keys that only the fallback recognizes stay text where typing goes:
 type-to-search starts with the **þ** that Icelandic types on the US `/` key

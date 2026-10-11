@@ -14,12 +14,11 @@ use candidates::Candidates;
 use chord_panel::ChordPanel;
 
 use super::keys::{
-    KeyPress,
+    KeyPress, TEXT_EDITING,
     bindings::{
-        COPY, CUT, DOWN, ENTER_ANY_SHIFT, ESCAPE_ANY, FIRST_ITEM, FOCUS_NEXT, FOCUS_PREVIOUS,
-        LAST_ITEM, LEFT, PAGE_DOWN, PAGE_UP, PASTE, REFERENCE, REFERENCE_CATEGORIES,
-        REFERENCE_LIST, REFERENCE_SEARCH, RIGHT, SELECT_ALL, SPACE, TENXER_REFERENCE, UP, VIM_DOWN,
-        VIM_LEFT, VIM_RIGHT, VIM_UP,
+        DOWN, ENTER_ANY_SHIFT, ESCAPE_ANY, FIRST_ITEM, FOCUS_NEXT, FOCUS_PREVIOUS, LAST_ITEM, LEFT,
+        PAGE_DOWN, PAGE_UP, REFERENCE, REFERENCE_CATEGORIES, REFERENCE_LIST, REFERENCE_SEARCH,
+        RIGHT, SPACE, TENXER_REFERENCE, UP, VIM_DOWN, VIM_LEFT, VIM_RIGHT, VIM_UP,
     },
 };
 use super::{
@@ -1450,7 +1449,7 @@ impl ShortcutFooter {
             | gdk::ModifierType::SUPER_MASK;
         if search_focused
             && (!press.modifiers().intersects(commands)
-                || press.is_any(&[SELECT_ALL, COPY, PASTE, CUT]))
+                || TEXT_EDITING.iter().any(|(binding, _)| press.is(*binding)))
         {
             return Some(glib::Propagation::Proceed);
         }

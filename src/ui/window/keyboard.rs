@@ -12,7 +12,7 @@ use crate::{
     services::NavigationHistory,
     ui::{
         browser::BrowserView,
-        keys::{self, Binding, KeyPress, SHORTCUT_MODIFIERS, bindings::*},
+        keys::{self, Binding, KeyPress, SHORTCUT_MODIFIERS, TEXT_EDITING, bindings::*},
         modal::is_closing_layer,
         preview::PreviewDrawer,
         shortcut_footer::ShortcutFooter,
@@ -139,21 +139,12 @@ pub(super) fn install_on(
 /// GTK's own text bindings miss a key that only the layout fallback reads as an
 /// editing shortcut, so the focused text field runs the matching action itself.
 pub(in crate::ui) fn edit_focused_text(window: &gtk::Window, press: &KeyPress) -> Propagation {
-    const EDITING: [(Binding, &str); 7] = [
-        (COPY, "clipboard.copy"),
-        (CUT, "clipboard.cut"),
-        (PASTE, "clipboard.paste"),
-        (SELECT_ALL, "selection.select-all"),
-        (UNDO, "text.undo"),
-        (REDO, "text.redo"),
-        (REDO_Y, "text.redo"),
-    ];
     if !press.used_fallback() {
         return Propagation::Proceed;
     }
     let focused = gtk::prelude::RootExt::focus(window)
         .filter(|focused| focused.is::<gtk::Text>() || focused.is::<gtk::TextView>());
-    let edit = EDITING.iter().find(|(binding, _)| press.is(*binding));
+    let edit = TEXT_EDITING.iter().find(|(binding, _)| press.is(*binding));
     let (Some(focused), Some((_, action))) = (focused, edit) else {
         return Propagation::Proceed;
     };

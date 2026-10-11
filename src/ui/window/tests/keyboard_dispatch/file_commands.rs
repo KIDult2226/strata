@@ -779,6 +779,21 @@ fn undo_and_redo_run_only_on_their_exact_chords() {
             field.emit_activate();
             wait_until(renamed);
 
+            focus_files(&fixture);
+            assert!(fixture.press(Key::F1, none));
+            wait_until(|| fixture.shortcuts.reference_is_open());
+            assert!(
+                !fixture.press(Key::z, control),
+                "the F1 search takes Ctrl+Z"
+            );
+            pump(100);
+            assert!(
+                renamed(),
+                "Ctrl+Z in the F1 search must not undo the rename"
+            );
+            assert!(fixture.press(Key::Escape, none));
+            wait_until(|| !fixture.shortcuts.reference_is_open());
+
             for (key, modifiers) in [
                 (Key::z, none),
                 (Key::z, control | shift),
