@@ -8,17 +8,12 @@ use gtk::{
 };
 
 use super::*;
-use crate::ui::{
-    keys::{KeyPress, bindings::*},
-    preferences::PreferenceManager,
-};
+use crate::ui::{keys::KeyPress, preferences::PreferenceManager};
 
 const NONE: ModifierType = ModifierType::empty();
 const CONTROL: ModifierType = ModifierType::CONTROL_MASK;
 const SHIFT: ModifierType = ModifierType::SHIFT_MASK;
 const ALT: ModifierType = ModifierType::ALT_MASK;
-const SUPER: ModifierType = ModifierType::SUPER_MASK;
-const CAPS: ModifierType = ModifierType::LOCK_MASK;
 
 /// A US-QWERTY press as GDK delivers it without an event.
 fn press(key: Key, modifiers: ModifierType) -> KeyPress {
@@ -135,107 +130,6 @@ fn mouse_history_buttons_map_to_navigation_actions() {
 }
 
 #[test]
-fn open_terminal_shortcut_requires_control_alt() {
-    assert!(press(Key::t, CONTROL | ALT).is(TERMINAL));
-    assert!(press(Key::t, CONTROL | ALT | CAPS).is(TERMINAL));
-    assert!(!press(Key::t, NONE).is(TERMINAL));
-    assert!(!press(Key::t, CONTROL | SHIFT).is(TERMINAL));
-    assert!(!press(Key::t, CONTROL).is(TERMINAL));
-    assert!(!press(Key::t, CONTROL | ALT | SHIFT).is(TERMINAL));
-    assert!(!press(Key::F4, CONTROL).is(TERMINAL));
-}
-
-#[test]
-fn undo_shortcut_requires_control_alone() {
-    assert!(press(Key::z, CONTROL).is(UNDO));
-    assert!(press(Key::z, CONTROL | CAPS).is(UNDO));
-    assert!(!press(Key::z, NONE).is(UNDO));
-    assert!(!press(Key::z, CONTROL | SHIFT).is(UNDO));
-    assert!(!press(Key::z, CONTROL | ALT).is(UNDO));
-    assert!(!press(Key::z, CONTROL | SUPER).is(UNDO));
-}
-
-#[test]
-fn redo_shortcut_accepts_control_shift_z_and_control_y() {
-    let redo = |key, modifiers| press(key, modifiers).is_any(&[REDO, REDO_Y]);
-    assert!(redo(Key::z, CONTROL | SHIFT));
-    assert!(redo(Key::Z, CONTROL | SHIFT));
-    assert!(redo(Key::y, CONTROL));
-    assert!(redo(Key::y, CONTROL | CAPS));
-    assert!(!redo(Key::z, CONTROL));
-    assert!(!redo(Key::z, CONTROL | SHIFT | ALT));
-    assert!(!redo(Key::y, CONTROL | SHIFT));
-    assert!(!redo(Key::y, CONTROL | ALT));
-    assert!(!redo(Key::z, SHIFT));
-    assert!(!redo(Key::z, NONE));
-}
-
-#[test]
-fn page_keys_and_their_keypad_twins_are_one_binding() {
-    for (key, binding) in [
-        (Key::Page_Up, PAGE_UP),
-        (Key::KP_Page_Up, PAGE_UP),
-        (Key::Page_Down, PAGE_DOWN),
-        (Key::KP_Page_Down, PAGE_DOWN),
-    ] {
-        assert!(press(key, NONE).is(binding), "{key:?}");
-    }
-    assert!(!press(Key::Home, NONE).is_any(&[PAGE_UP, PAGE_DOWN]));
-}
-
-#[test]
-fn jump_shortcut_requires_control_without_other_command_modifiers() {
-    let jump = [FIRST_ITEM_UP, LAST_ITEM_DOWN];
-    assert!(press(Key::Up, CONTROL).is(FIRST_ITEM_UP));
-    assert!(press(Key::Down, CONTROL).is(LAST_ITEM_DOWN));
-    assert!(!press(Key::Left, CONTROL).is_any(&jump));
-    assert!(!press(Key::Up, NONE).is_any(&jump));
-    for modifier in [SHIFT, ALT, SUPER] {
-        assert!(!press(Key::Up, CONTROL | modifier).is_any(&jump));
-    }
-}
-
-#[test]
-fn toggle_hidden_shortcut_accepts_h_or_period_with_only_control() {
-    let hidden =
-        |key, modifiers| press(key, modifiers).is_any(&[HIDDEN_FILES, HIDDEN_FILES_PERIOD]);
-    assert!(hidden(Key::h, CONTROL));
-    assert!(hidden(Key::h, CONTROL | CAPS));
-    assert!(hidden(Key::period, CONTROL));
-    assert!(!hidden(Key::h, NONE));
-    assert!(!hidden(Key::h, CONTROL | SHIFT));
-    assert!(!hidden(Key::h, CONTROL | ALT));
-    // US Shift turns the period key into `>`.
-    assert!(!hidden(Key::greater, CONTROL | SHIFT));
-}
-
-#[test]
-fn sidebar_focus_shortcut_requires_control_and_shift() {
-    assert!(press(Key::b, CONTROL | SHIFT).is(SIDEBAR_FOCUS));
-    assert!(press(Key::B, CONTROL | SHIFT).is(SIDEBAR_FOCUS));
-    assert!(!press(Key::b, CONTROL).is(SIDEBAR_FOCUS));
-}
-
-#[test]
-fn context_menu_shortcut_accepts_menu_key_alone_and_shift_f10() {
-    let menu = |key, modifiers| press(key, modifiers).is_any(&[CONTEXT_MENU, CONTEXT_MENU_F10]);
-    assert!(menu(Key::Menu, NONE));
-    assert!(menu(Key::F10, SHIFT));
-    assert!(!menu(Key::Menu, SHIFT));
-    assert!(!menu(Key::Menu, CONTROL));
-    assert!(!menu(Key::F10, NONE));
-    assert!(!menu(Key::F10, SHIFT | CONTROL));
-    assert!(!menu(Key::F10, SHIFT | ALT));
-    assert!(!menu(Key::F10, SHIFT | SUPER));
-    assert!(!menu(Key::Menu, SUPER));
-    // Hyper, Meta and the locks are not shortcut modifiers.
-    for modifier in [ModifierType::HYPER_MASK, ModifierType::META_MASK, CAPS] {
-        assert!(menu(Key::F10, SHIFT | modifier));
-        assert!(menu(Key::Menu, modifier));
-    }
-}
-
-#[test]
 fn type_to_search_accepts_printable_keys_without_command_modifiers() {
     assert_eq!(
         type_to_search_query(&press(Key::a, NONE)),
@@ -300,32 +194,6 @@ fn control_digits_select_each_browser_presentation() {
     assert_eq!(browser_mode_for_digit(&press(Key::_1, NONE)), None);
 }
 
-#[test]
-fn rename_shortcut_accepts_f2_and_control_r() {
-    let rename = |key, modifiers| press(key, modifiers).is_any(&[RENAME, RENAME_R]);
-    assert!(rename(Key::F2, NONE));
-    assert!(rename(Key::r, CONTROL));
-    assert!(rename(Key::r, CONTROL | CAPS));
-}
-
-#[test]
-fn rename_shortcut_ignores_extra_modifiers_and_other_keys() {
-    let rename = |key, modifiers| press(key, modifiers).is_any(&[RENAME, RENAME_R]);
-    assert!(!rename(Key::r, NONE));
-    assert!(!rename(Key::r, CONTROL | SHIFT));
-    assert!(!rename(Key::r, CONTROL | ALT));
-    assert!(!rename(Key::F2, CONTROL));
-    assert!(!rename(Key::F5, CONTROL));
-}
-
-#[test]
-fn refresh_shortcut_keeps_f5_and_releases_control_r() {
-    assert!(press(Key::F5, NONE).is(REFRESH));
-    assert!(!press(Key::r, NONE).is(REFRESH));
-    assert!(!press(Key::F5, NONE).is_any(&[RENAME, RENAME_R]));
-    assert!(press(Key::r, CONTROL).is_any(&[RENAME, RENAME_R]));
-}
-
 /// Each window action with the press that runs it.
 const WINDOW_SHORTCUTS: [(Key, ModifierType, &str); 5] = [
     (Key::k, CONTROL, "search"),
@@ -352,8 +220,14 @@ fn window_actions_run_once_the_dispatcher_yields_and_claim_no_other_key() {
             for (key, modifiers) in [
                 (Key::F2, NONE),
                 (Key::r, CONTROL),
+                (Key::r, NONE),
                 (Key::F5, SHIFT),
                 (Key::k, CONTROL | ALT),
+                (Key::t, NONE),
+                (Key::t, CONTROL),
+                (Key::t, CONTROL | SHIFT),
+                (Key::t, CONTROL | ALT | SHIFT),
+                (Key::F4, CONTROL),
             ] {
                 dispatch(&window, key, modifiers);
                 assert!(runs.take().is_empty(), "{key:?} ran a window action");
@@ -473,13 +347,4 @@ fn settle_policy() {
     while context.pending() {
         context.iteration(false);
     }
-}
-
-#[test]
-fn native_editing_shortcuts_are_left_to_the_focused_widget() {
-    let editing = [SELECT_ALL, COPY, PASTE, CUT];
-    for key in [Key::a, Key::c, Key::v, Key::x] {
-        assert!(press(key, CONTROL).is_any(&editing), "{key:?}");
-    }
-    assert!(!press(Key::c, CONTROL | SHIFT).is_any(&editing));
 }

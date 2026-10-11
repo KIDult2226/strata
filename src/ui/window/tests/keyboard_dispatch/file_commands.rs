@@ -750,6 +750,80 @@ fn ctrl_alt_n_groups_selected_items_into_a_named_folder() {
 }
 
 #[test]
+fn undo_and_redo_run_only_on_their_exact_chords() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::file_commands::undo_and_redo_run_only_on_their_exact_chords",
+        || {
+            let fixture = KeyboardFixture::new();
+            PreferenceManager::shared().set_type_to_search(false);
+            let directory = fixture._directory.path().to_path_buf();
+            let browser = fixture.view.browser();
+            let none = ModifierType::empty();
+            let control = ModifierType::CONTROL_MASK;
+            let shift = ModifierType::SHIFT_MASK;
+            let alt = ModifierType::ALT_MASK;
+            let renamed = || {
+                directory.join("renamed.txt").exists()
+                    && !directory.join("a.txt").exists()
+                    && browser.pending_undo_rename().is_some()
+            };
+            let restored = || {
+                directory.join("a.txt").exists()
+                    && !directory.join("renamed.txt").exists()
+                    && browser.pending_redo_rename().is_some()
+            };
+            focus_files(&fixture);
+            assert!(fixture.view.begin_rename());
+            let field = fixture.view.active_rename_field().expect("rename field");
+            field.set_text("renamed.txt");
+            field.emit_activate();
+            wait_until(renamed);
+
+            for (key, modifiers) in [
+                (Key::z, none),
+                (Key::z, control | shift),
+                (Key::z, control | alt),
+                (Key::z, control | ModifierType::SUPER_MASK),
+            ] {
+                focus_files(&fixture);
+                fixture.press(key, modifiers);
+                pump(100);
+                assert!(renamed(), "{modifiers:?}+{key:?} must not undo");
+            }
+            focus_files(&fixture);
+            assert!(fixture.press(Key::z, control));
+            wait_until(restored);
+
+            for (key, modifiers) in [
+                (Key::z, none),
+                (Key::z, shift),
+                (Key::z, control),
+                (Key::z, control | shift | alt),
+                (Key::y, control | shift),
+                (Key::y, control | alt),
+            ] {
+                focus_files(&fixture);
+                fixture.press(key, modifiers);
+                pump(100);
+                assert!(restored(), "{modifiers:?}+{key:?} must not redo");
+            }
+            for (key, modifiers) in [
+                (Key::z, control | shift),
+                (Key::Z, control | shift),
+                (Key::y, control),
+            ] {
+                focus_files(&fixture);
+                assert!(fixture.press(key, modifiers), "{modifiers:?}+{key:?}");
+                wait_until(renamed);
+                focus_files(&fixture);
+                assert!(fixture.press(Key::z, control));
+                wait_until(restored);
+            }
+        },
+    );
+}
+
+#[test]
 fn abandoned_group_naming_keeps_a_later_rename_separate() {
     crate::test_support::gtk_test(
         "ui::window::tests::keyboard_dispatch::file_commands::abandoned_group_naming_keeps_a_later_rename_separate",

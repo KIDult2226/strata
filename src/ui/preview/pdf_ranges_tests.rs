@@ -2,15 +2,9 @@
 
 use std::{cell::RefCell, collections::HashMap, sync::Arc};
 
-use gtk::gdk::{Key, ModifierType as M};
-
 use super::{
     PdfTextLayer, pdf_apply_ranges, pdf_desired_ranges, pdf_drop_unselected_layer,
     pdf_selected_text,
-};
-use crate::ui::keys::{
-    KeyPress,
-    bindings::{COPY, SELECT_ALL},
 };
 
 fn layer(text: &str) -> Arc<PdfTextLayer> {
@@ -108,16 +102,4 @@ fn select_all_replaces_stale_unbound_ranges() {
         .collect();
     pdf_apply_ranges(&ranges, &layers, &HashMap::new(), desired);
     assert!(!ranges.borrow().contains_key(&4));
-}
-
-#[test]
-fn pdf_text_keys_ignore_latch_bits_but_reject_shift_and_alt() {
-    let press = |key, modifiers| KeyPress::from_signal(key, 0, modifiers);
-    for (key, binding) in [(Key::a, SELECT_ALL), (Key::c, COPY)] {
-        assert!(press(key, M::CONTROL_MASK).is(binding));
-        assert!(press(key, M::CONTROL_MASK | M::LOCK_MASK).is(binding));
-        assert!(!press(key, M::empty()).is(binding));
-        assert!(!press(key, M::CONTROL_MASK | M::SHIFT_MASK).is(binding));
-        assert!(!press(key, M::CONTROL_MASK | M::ALT_MASK).is(binding));
-    }
 }

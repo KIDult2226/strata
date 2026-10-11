@@ -1281,6 +1281,102 @@ fn tenxer_file_list_skips_conflicting_defaults_and_keeps_bound_shortcuts() {
 }
 
 #[test]
+fn default_commands_ignore_near_miss_chords() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::default_commands_ignore_near_miss_chords",
+        || {
+            use crate::ui::browser::{ClipboardMark, clipboard_mark};
+            let fixture = KeyboardFixture::new();
+            PreferenceManager::shared().set_type_to_search(true);
+            let browser = fixture.view.browser();
+            let none = ModifierType::empty();
+            let control = ModifierType::CONTROL_MASK;
+            let shift = ModifierType::SHIFT_MASK;
+            let alt = ModifierType::ALT_MASK;
+            // A plain letter opens the filter instead, which Escape closes.
+            let near_miss = |key: Key, modifiers: ModifierType| {
+                browser.select(0, 0);
+                focus_files(&fixture);
+                fixture.press(key, modifiers);
+                if fixture.view.filter_has_focus() {
+                    assert!(fixture.press(Key::Escape, none));
+                }
+                wait_loaded(&browser, 0);
+            };
+
+            for (key, modifiers) in [
+                (Key::r, none),
+                (Key::r, control | shift),
+                (Key::r, control | alt),
+                (Key::F2, control),
+                (Key::F5, none),
+                (Key::F5, control),
+            ] {
+                near_miss(key, modifiers);
+                assert!(
+                    !fixture.view.rename_is_active(),
+                    "{modifiers:?}+{key:?} must not rename"
+                );
+                // F2 waits out a refresh's row rebuild, so each near miss meets
+                // a pane that can rename.
+                wait_until(|| fixture.press(Key::F2, none));
+                assert!(fixture.view.rename_is_active());
+                assert!(fixture.press(Key::Escape, none));
+            }
+            browser.select(0, 0);
+            focus_files(&fixture);
+            assert!(fixture.press(Key::r, control));
+            assert!(fixture.view.rename_is_active(), "Ctrl+R renames");
+            assert!(fixture.press(Key::Escape, none));
+
+            let first = Location::local(fixture._directory.path().join("a.txt"));
+            browser.select(0, 0);
+            focus_files(&fixture);
+            fixture.press(Key::c, control | shift);
+            assert_eq!(clipboard_mark(&first), ClipboardMark::None, "Ctrl+Shift+C");
+            assert!(fixture.press(Key::c, control));
+            assert_eq!(clipboard_mark(&first), ClipboardMark::Copy);
+
+            let shows_hidden = browser.preferences().show_hidden;
+            for (key, modifiers) in [
+                (Key::h, none),
+                (Key::h, control | shift),
+                (Key::h, control | alt),
+                (Key::greater, control | shift),
+            ] {
+                near_miss(key, modifiers);
+                assert_eq!(
+                    browser.preferences().show_hidden,
+                    shows_hidden,
+                    "{modifiers:?}+{key:?} must not toggle hidden files"
+                );
+            }
+            for key in [Key::h, Key::period] {
+                focus_files(&fixture);
+                assert!(fixture.press(key, control), "Ctrl+{key:?}");
+                assert_eq!(browser.preferences().show_hidden, !shows_hidden);
+                assert!(fixture.press(key, control), "Ctrl+{key:?}");
+                assert_eq!(browser.preferences().show_hidden, shows_hidden);
+            }
+
+            focus_files(&fixture);
+            assert!(fixture.press(Key::b, control));
+            assert!(
+                !fixture.sidebar_toggle.is_active(),
+                "Ctrl+B hides the sidebar"
+            );
+            pump(50);
+            assert!(!sidebar_has_focus(&fixture), "Ctrl+B does not focus it");
+            for key in [Key::b, Key::B] {
+                focus_files(&fixture);
+                assert!(fixture.press(key, control | shift), "Ctrl+Shift+{key:?}");
+                wait_until(|| sidebar_has_focus(&fixture));
+            }
+        },
+    );
+}
+
+#[test]
 fn appearance_menu_shows_i_preview_while_tenxer_is_on() {
     crate::test_support::gtk_test(
         "ui::window::tests::keyboard_dispatch::appearance_menu_shows_i_preview_while_tenxer_is_on",
@@ -1675,6 +1771,16 @@ fn page_keys_extend_shift_selection_or_a_tenxer_range() {
                     [focused_index(&browser)],
                     "{mode:?} a plain Page Down still replaces the selection"
                 );
+
+                let paged = focused_index(&browser);
+                assert!(fixture.press(Key::KP_Page_Up, none), "{mode:?}");
+                let back = focused_index(&browser);
+                assert!(back < paged, "{mode:?} keypad Page Up pages");
+                assert!(fixture.press(Key::KP_Page_Down, none), "{mode:?}");
+                assert!(
+                    focused_index(&browser) > back,
+                    "{mode:?} keypad Page Down pages"
+                );
             }
 
             PreferenceManager::shared().set_tenxer_mode(true);
@@ -1879,6 +1985,28 @@ fn jump_keys_move_the_cursor_when_focus_is_parked_on_the_column_list() {
                 park_focus_on_the_column(&fixture);
                 assert!(fixture.press(back.0, back.1), "{back:?} while parked");
                 assert_eq!(focused_name(&browser), "a.txt", "{back:?}");
+            }
+            for (key, modifiers) in [
+                (Key::Left, ModifierType::CONTROL_MASK),
+                (Key::Up, ModifierType::empty()),
+                (
+                    Key::Up,
+                    ModifierType::CONTROL_MASK | ModifierType::SHIFT_MASK,
+                ),
+                (Key::Up, ModifierType::CONTROL_MASK | ModifierType::ALT_MASK),
+                (
+                    Key::Up,
+                    ModifierType::CONTROL_MASK | ModifierType::SUPER_MASK,
+                ),
+            ] {
+                browser.select(0, 2);
+                park_focus_on_the_column(&fixture);
+                fixture.press(key, modifiers);
+                assert_ne!(
+                    focused_name(&browser),
+                    "a.txt",
+                    "{modifiers:?}+{key:?} must not jump"
+                );
             }
         },
     );

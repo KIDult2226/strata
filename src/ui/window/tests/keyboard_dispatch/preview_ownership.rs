@@ -585,6 +585,42 @@ fn tenxer_preview_owns_document_keys_until_returned() {
 }
 
 #[test]
+fn default_editing_keys_reach_a_focused_preview() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::preview_ownership::default_editing_keys_reach_a_focused_preview",
+        || {
+            use crate::ui::browser::{ClipboardMark, clipboard_mark};
+            let fixture = ownership_fixture();
+            PreferenceManager::shared().set_tenxer_mode(false);
+            let names = directory_names(fixture._directory.path());
+            select_named(&fixture, "long.txt");
+            let selection = fixture.selected();
+            assert!(fixture.press(Key::space, ModifierType::empty()));
+            let document = || {
+                widget_with_class(&fixture.preview.widget(), "preview-virtual-list")
+                    .filter(gtk::Widget::is_mapped)
+            };
+            wait_until(|| document().is_some());
+            assert!(document().expect("document").grab_focus());
+            for key in [Key::a, Key::c, Key::v, Key::x] {
+                assert!(
+                    !fixture.press(key, ModifierType::CONTROL_MASK),
+                    "Ctrl+{key:?} goes to the document"
+                );
+                assert!(preview_has_focus(&fixture), "{key:?}");
+            }
+            assert_eq!(fixture.selected(), selection, "Ctrl+A selects no files");
+            assert_eq!(
+                clipboard_mark(&Location::local(fixture._directory.path().join("long.txt"))),
+                ClipboardMark::None,
+                "Ctrl+C and Ctrl+X mark no files"
+            );
+            assert_eq!(directory_names(fixture._directory.path()), names);
+        },
+    );
+}
+
+#[test]
 fn default_archive_keys_follow_pane_focus() {
     crate::test_support::gtk_test(
         "ui::window::tests::keyboard_dispatch::preview_ownership::default_archive_keys_follow_pane_focus",
