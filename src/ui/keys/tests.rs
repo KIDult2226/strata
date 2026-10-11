@@ -554,6 +554,10 @@ fn signals_without_an_event_read_as_us_presses() {
     for letter in [Key::K, Key::k] {
         assert!(KeyPress::from_signal(letter, 0, CTRL_SHIFT).is(Binding::ctrl_shift(Key::k)));
     }
+    assert!(
+        KeyPress::from_signal(Key::G, 0, CAPS).is(Binding::plain(Key::g)),
+        "Caps Lock alone types G"
+    );
     assert!(KeyPress::from_signal(Key::ISO_Left_Tab, 0, NONE).is(Binding::shift(Key::Tab)));
     assert!(KeyPress::from_signal(Key::question, 0, SHIFT).is(Binding::plain(Key::question)));
     assert!(KeyPress::from_signal(Key::Shift_L, 0, NONE).is_modifier());

@@ -306,7 +306,10 @@ impl Event {
         };
         let mut modifiers = state;
         if key != typed {
-            modifiers.insert(Modifiers::SHIFT_MASK);
+            // Caps Lock alone types uppercase and never changes a shortcut.
+            if !state.contains(Modifiers::LOCK_MASK) || state.contains(Modifiers::SHIFT_MASK) {
+                modifiers.insert(Modifiers::SHIFT_MASK);
+            }
         } else if position.is_some() && typed.to_upper() == typed {
             // GDK reports the Shift that typed a digit or symbol as consumed.
             modifiers.remove(Modifiers::SHIFT_MASK);

@@ -79,8 +79,8 @@ fn keys_step_and_jump_the_playback_position() {
                 (20_000_000, Key::End, Mods::empty(), Some(LAST)),
                 (20_000_000, Key::KP_End, Mods::empty(), Some(LAST)),
                 (20_000_000, Key::G, Mods::SHIFT_MASK, Some(LAST)),
-                // Caps Lock types G without Shift.
-                (20_000_000, Key::G, Mods::LOCK_MASK, Some(LAST)),
+                // Caps Lock never changes a shortcut: this is g, not G.
+                (20_000_000, Key::G, Mods::LOCK_MASK, None),
                 // Modified paging and jump keys stay free for other bindings.
                 (20_000_000, Key::Page_Up, Mods::SHIFT_MASK, None),
                 (
