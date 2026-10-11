@@ -224,7 +224,7 @@ pass before merge.
 - Read key input only through `ui::keys` (`keys::on_press`, `keys::on_release`,
   `keys::read_event`); `clippy.toml` rejects raw key signals elsewhere.
 - Define every shortcut as a constant in the `ui::keys::bindings` catalog and
-  match it with `press.is(…)` or `press.digit(…)`. Never compare raw keyvals or
+  match it with `press.is(…)` or `press.digit_in(…)`. Never compare raw keyvals or
   typed text to recognize a command.
 - Never type a key label by hand. F1 rows, hints, tooltips, and menus render
   catalog bindings with `keys::label`. Follow `docs/keyboard-shortcuts.md`.

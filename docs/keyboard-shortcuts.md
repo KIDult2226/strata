@@ -27,7 +27,12 @@ Shortcuts follow the key's label first, then its physical position:
 - **The top digit row is 1–0 by position** on every layout, with or without
   Shift. **Ctrl+1**, **Ctrl+Shift+1** and 10xer digits work on AZERTY, where the
   row types `&é"'(` without Shift, and on layouts whose Shift+digit symbols
-  differ from US. Keypad digits count as digits when Num Lock is on.
+  differ from US. A chord's digit step (**t 1**, **g 1**, **; 1**) also accepts
+  the Shift AZERTY types digits with. A digit typed elsewhere counts too, such
+  as the Hungarian 0 left of 1, and keypad digits count when Num Lock is on.
+- **`+` and `−` win over a digit position.** Where a top-row key types `+` or
+  `−`, it acts as that symbol: on Swiss German, Ctrl and the `+` key (Shift+1)
+  is **Ctrl++**, not tab 1, and on AZERTY **g** then the `−` key unpins.
 - **Keypad keys act as the main keys** they share a label with: keypad Enter,
   arrows, Home, End, Page Up, Page Down, Insert, Delete, Tab, Space, `+`, `−`,
   `*`, `/` and `=`.
@@ -75,9 +80,10 @@ shortcut is therefore always one that works.
 ### One entry point
 
 `ui::keys` (`src/ui/keys.rs`) is the only module that reads GDK key events.
-Install handlers with `keys::on_press(&controller, |press| …)` and
-`keys::on_release(…)`. Each event is normalized once into a `KeyPress` and passed
-to the handler.
+Install handlers with `keys::on_press(&controller, |controller, press| …)`,
+which returns a `Propagation`, and `keys::on_release(&controller,
+|controller, press| …)`. Each event is normalized once into a `KeyPress` and
+passed to the handler.
 
 `clippy.toml` lists `EventControllerKey::connect_key_pressed`,
 `EventControllerKey::connect_key_released`, and
@@ -89,9 +95,9 @@ to the handler.
 - `is(binding)` reports whether the press matches a `Binding`. Use it for
   every command, including navigation keys such as Escape, Return, and arrows.
   `is_any(bindings)` tries several.
-- `digit(modifiers)` returns the digit-row or keypad digit when the modifiers
-  match exactly, for ordinal commands such as view modes and tab numbers.
-  `digit_in(digits)` does the same for a catalog digit range.
+- `digit_in(digits)` returns the digit-row or keypad digit of a catalog digit
+  range, such as tab numbers or a chord's digit step. Single digit bindings
+  (**Ctrl+1**) go through `is()`.
 - `text()` returns the typed character, for typing consumers only.
 - `is_modifier()` reports a bare modifier key press, and `modifier_key()` which
   modifier it is.
@@ -147,7 +153,7 @@ unless a key is a letter (**Ctrl+U / Ctrl+D**). Minus is shown as **−**.
 
 F1 searches `keys::search_text`: the label in the interface language and in
 English, with each alternative also spelled out in full, so **strg+0** and
-**ctrl+0** both find **Strg++ / − / 0**.
+**ctrl+0** both find **Strg++ / − / 0**. A typed `-` finds the **−** in labels.
 
 Menus display the formatter's text too. GTK formats a menu item's `accel`
 attribute itself: it puts Shift first, capitalizes letters, and uses its own
@@ -170,11 +176,12 @@ formatter's label.
    the event, because Caps Lock raises the event's level for letters. GDK
    keycodes are evdev codes plus 8 on both X11 and Wayland. If neither source
    has a Latin key, keep the original.
-3. Digit-row keycodes 10–19 map to 1–9 and 0 regardless of the key they type.
-   `digit()` compares the event's modifier state before consumed modifiers are
-   removed, so **Ctrl+1** and **Ctrl+Shift+1** stay distinct on every layout.
+3. Digit-row keycodes 10–19 map to 1–9 and 0 regardless of the key they type;
+   another key counts as the digit it types at level 0 or 1. Digit matching
+   compares the event's modifier state before consumed modifiers are removed,
+   so **Ctrl+1** and **Ctrl+Shift+1** stay distinct on every layout.
 4. Keypad keys become the main keys they share a label with. Keypad digits stay
-   keypad keys and count through `digit()` when Num Lock is on.
+   keypad keys and count as digits when Num Lock is on.
 
 The common path costs one `match_()` call and a range check. `map_keycode`
 runs only for keys outside ASCII, and nothing is cached, so no keymap-change
@@ -229,9 +236,11 @@ own action (`clipboard.cut`, `clipboard.copy`, `clipboard.paste`,
 GTK's own text bindings handle it. The file chooser applies the same rule
 (`edit_focused_text`).
 
-Plain keys that only the fallback recognizes stay text in a focused field: in
-10xer mode the Russian **Ё** key reads as **~** but types **Ё** into the
-location bar or the F1 search instead of toggling the reference.
+Plain keys that only the fallback recognizes stay text where typing goes:
+type-to-search starts with the **þ** that Icelandic types on the US `/` key
+instead of opening an empty filter, and in 10xer mode the Russian **Ё** key
+reads as **~** but types **Ё** into the location bar or the F1 search instead
+of toggling the reference.
 
 A focused cell of a document table follows the same rule for copy and select
 all. The table's key handler runs the cell's action, because it owns the
@@ -242,7 +251,7 @@ and **Ctrl+A** clears it first.
 
 1. Add the binding to `ui::keys::bindings`, in the catalog block for the F1
    maps that list it, and match it in the handler with `press.is(…)` or
-   `press.digit(…)`.
+   `press.digit_in(…)`.
 2. Reference the same constant from its F1 row in `ui/shortcut_reference.rs`
    and from any context hint. The label renders itself; translate only the
    action text, in every catalog (see
