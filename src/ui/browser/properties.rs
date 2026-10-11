@@ -9,6 +9,7 @@ use crate::ui::browser::entry::{entry_icon, format_file_size};
 use crate::ui::browser::paths::{PinAction, compact_display_path, is_trash_root, pin_action_for};
 use crate::ui::browser::{PinStatus, ViewState};
 use crate::ui::controls::{ModalTone, form_check_button, modal_layout, properties_action};
+use crate::ui::keys::{self, bindings::ESCAPE_ANY};
 use crate::ui::modal::{
     ModalHost, dismiss_modal_layer, modal_layer, remember_modal_focus, show_error_dialog,
 };
@@ -805,8 +806,8 @@ impl ViewState {
         let escaped_layer = layer.clone();
         let escaped_overlay = window_overlay.clone();
         let escaped_root = blurred_root.clone();
-        escape.connect_key_pressed(move |_, key, _, _| {
-            if key == gtk::gdk::Key::Escape {
+        keys::on_press(&escape, move |_, press| {
+            if press.is(ESCAPE_ANY) {
                 dismiss_modal_layer(&escaped_layer, &escaped_overlay, escaped_root.as_ref());
                 glib::Propagation::Stop
             } else {
@@ -945,8 +946,8 @@ impl ViewState {
         let escaped_layer = layer.clone();
         let escaped_overlay = window_overlay.clone();
         let escaped_root = blurred_root.clone();
-        escape.connect_key_pressed(move |_, key, _, _| {
-            if key == gtk::gdk::Key::Escape {
+        keys::on_press(&escape, move |_, press| {
+            if press.is(ESCAPE_ANY) {
                 dismiss_modal_layer(&escaped_layer, &escaped_overlay, escaped_root.as_ref());
                 glib::Propagation::Stop
             } else {

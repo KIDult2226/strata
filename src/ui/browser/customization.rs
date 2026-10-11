@@ -3,6 +3,7 @@
 use crate::model::{FolderColor, FolderColorValue, Location};
 use crate::services::TrashedOriginal;
 use crate::ui::controls::{focus_button, modal_layout};
+use crate::ui::keys::{self, bindings::ESCAPE_ANY};
 use crate::ui::modal::{
     ModalHost, dismiss_modal_layer, dismiss_modal_layer_then, modal_layer,
     modal_layer_with_backdrop, remember_modal_focus,
@@ -183,8 +184,8 @@ fn show_custom_color_modal(
     let keys = gtk::EventControllerKey::new();
     keys.set_propagation_phase(gtk::PropagationPhase::Capture);
     let chooser_for_escape = chooser.clone();
-    keys.connect_key_pressed(move |_, key, _, _| {
-        if key == gtk::gdk::Key::Escape {
+    keys::on_press(&keys, move |_, press| {
+        if press.is(ESCAPE_ANY) {
             if chooser_for_escape.property::<bool>("show-editor") {
                 chooser_for_escape.set_property("show-editor", false);
             } else {
@@ -448,8 +449,8 @@ pub(in crate::ui) fn show_customize_modal(
     let escape_overlay = window_overlay;
     let escape_root = blurred_root;
     let escape_emoji = emoji_chooser.downgrade();
-    keys.connect_key_pressed(move |_, key, _, _| {
-        if key != gtk::gdk::Key::Escape {
+    keys::on_press(&keys, move |_, press| {
+        if !press.is(ESCAPE_ANY) {
             return glib::Propagation::Proceed;
         }
         // The capture phase sees the emoji popover's Escape before the popover does.

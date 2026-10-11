@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::{FileProgressState, FileProgressView};
+use crate::ui::keys::{self, bindings::ESCAPE_ANY};
 use crate::ui::progress_dock::CompactProgress;
 use gtk::{glib, prelude::*};
 use std::rc::Rc;
@@ -8,8 +9,8 @@ use std::rc::Rc;
 pub(super) fn install_progress_keys(layer: &gtk::Box, action: &Rc<dyn Fn()>) {
     let action = action.clone();
     let escape = gtk::EventControllerKey::new();
-    escape.connect_key_pressed(move |_, key, _, _| {
-        if key == gtk::gdk::Key::Escape {
+    keys::on_press(&escape, move |_, press| {
+        if press.is(ESCAPE_ANY) {
             action();
             glib::Propagation::Stop
         } else {

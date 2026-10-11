@@ -16,6 +16,7 @@ use crate::ui::controls::{
     keep_words_whole, message_dialog_description, message_dialog_layout, modal_layout,
     segmented_control,
 };
+use crate::ui::keys::{self, bindings::ESCAPE_ANY};
 use crate::ui::modal::{
     ModalHost, dismiss_modal_layer, modal_layer, show_error_dialog, submit_on_enter,
 };
@@ -259,8 +260,8 @@ fn show_trust_question_dialog(
     let escape_layer = layer.clone();
     let escape_overlay = window_overlay.clone();
     let escape_root = blurred_root;
-    escape.connect_key_pressed(move |_, key, _, _| {
-        if key != gtk::gdk::Key::Escape {
+    keys::on_press(&escape, move |_, press| {
+        if !press.is(ESCAPE_ANY) {
             return glib::Propagation::Proceed;
         }
         declined.set(true);
@@ -471,8 +472,8 @@ fn show_authentication_dialog(
     let escape_layer = layer.clone();
     let escape_overlay = window_overlay;
     let escape_root = blurred_root;
-    escape.connect_key_pressed(move |_, key, _, _| {
-        if key != gtk::gdk::Key::Escape {
+    keys::on_press(&escape, move |_, press| {
+        if !press.is(ESCAPE_ANY) {
             return glib::Propagation::Proceed;
         }
         dismiss_modal_layer(&escape_layer, &escape_overlay, escape_root.as_ref());
@@ -1956,10 +1957,10 @@ impl ViewState {
             }
         });
         let escape = gtk::EventControllerKey::new();
-        escape.connect_key_pressed({
+        keys::on_press(&escape, {
             let hide_keys = hide_keys.clone();
-            move |_, key, _, _| {
-                if key == gtk::gdk::Key::Escape {
+            move |_, press| {
+                if press.is(ESCAPE_ANY) {
                     if let Some(state) = weak.upgrade() {
                         state.hide_unlock_progress(&hide_keys);
                     }

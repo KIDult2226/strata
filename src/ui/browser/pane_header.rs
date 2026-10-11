@@ -2,9 +2,11 @@
 
 use crate::app::Browser;
 use crate::model::{FolderSort, SortDirection, SortKey};
-use crate::ui::browser::ViewState;
+use crate::ui::browser::{ViewState, vim_focus_direction};
 use crate::ui::controls::{DefaultActions, check_menu_option, menu_option};
+use crate::ui::keys::{self, bindings::BACKSPACE};
 use crate::ui::preferences::PreferenceManager;
+use gtk::gdk::ModifierType as Modifiers;
 use gtk::glib;
 use gtk::prelude::*;
 use std::cell::{Cell, RefCell};
@@ -159,25 +161,14 @@ pub(in crate::ui) fn column_sort_menu(browser: &Rc<Browser>, depth: usize) -> gt
     popover.set_child(Some(&content));
     let keys = gtk::EventControllerKey::new();
     keys.set_propagation_phase(gtk::PropagationPhase::Capture);
-    keys.connect_key_pressed(|controller, key, _, modifiers| {
-        if modifiers
-            .intersects(gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::ALT_MASK)
-        {
-            return glib::Propagation::Proceed;
-        }
+    keys::on_press(&keys, |controller, press| {
         let Some(popover) = controller.widget().and_downcast::<gtk::Popover>() else {
             return glib::Propagation::Proceed;
         };
-        if key == gtk::gdk::Key::BackSpace {
+        if press.is(BACKSPACE.ignoring(Modifiers::SHIFT_MASK | Modifiers::SUPER_MASK)) {
             popover.popdown();
             glib::Propagation::Stop
-        } else if let Some(direction) = match key {
-            gtk::gdk::Key::h => Some(gtk::DirectionType::Left),
-            gtk::gdk::Key::j => Some(gtk::DirectionType::Down),
-            gtk::gdk::Key::k => Some(gtk::DirectionType::Up),
-            gtk::gdk::Key::l => Some(gtk::DirectionType::Right),
-            _ => None,
-        } {
+        } else if let Some(direction) = vim_focus_direction(press) {
             popover.child_focus(direction);
             glib::Propagation::Stop
         } else {

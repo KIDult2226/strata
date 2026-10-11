@@ -26,6 +26,10 @@ use crate::ui::controls::{
     message_dialog_description, message_dialog_layout, modal_layout, segmented_control,
     set_form_field_error,
 };
+use crate::ui::keys::{
+    self,
+    bindings::{ENTER_ANY, ESCAPE_ANY},
+};
 use crate::ui::modal::{
     ModalHost, dismiss_modal_layer, modal_layer, remember_modal_focus, show_error_dialog,
     submit_on_enter,
@@ -114,8 +118,8 @@ impl ViewState {
         layout.close.connect_clicked(move |_| dismiss_for_close());
         let escape = gtk::EventControllerKey::new();
         let dismiss_for_escape = dismiss.clone();
-        escape.connect_key_pressed(move |_, key, _, _| {
-            if key == gtk::gdk::Key::Escape {
+        keys::on_press(&escape, move |_, press| {
+            if press.is(ESCAPE_ANY) {
                 dismiss_for_escape();
                 glib::Propagation::Stop
             } else {
@@ -240,11 +244,11 @@ impl ViewState {
         let escaped_overlay = window_overlay;
         let escaped_root = blurred_root;
         let enter_buttons = [keep_both, replace.clone(), cancel, close];
-        keys.connect_key_pressed(move |_, key, _, _| {
-            if key == gtk::gdk::Key::Escape {
+        keys::on_press(&keys, move |_, press| {
+            if press.is(ESCAPE_ANY) {
                 dismiss_modal_layer(&escaped_layer, &escaped_overlay, escaped_root.as_ref());
                 glib::Propagation::Stop
-            } else if key == gtk::gdk::Key::Return || key == gtk::gdk::Key::KP_Enter {
+            } else if press.is(ENTER_ANY) {
                 if let Some(button) = enter_buttons.iter().find(|button| button.has_focus()) {
                     button.emit_clicked();
                     glib::Propagation::Stop

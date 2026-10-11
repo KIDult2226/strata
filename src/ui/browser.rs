@@ -23,6 +23,10 @@ use crate::ui::browser::transfer::PendingSendToCompletion;
 use crate::ui::browser::transfer::duplicate_transfer;
 use crate::ui::browser::trash::TrashLoadingView;
 use crate::ui::browser_modes::{BrowserDensity, BrowserMode, ClickActivation, ModeViews};
+use crate::ui::keys::{
+    self, KeyPress,
+    bindings::{VIM_DOWN, VIM_LEFT, VIM_RIGHT, VIM_UP},
+};
 use gtk::glib;
 use gtk::prelude::*;
 use std::cell::{Cell, RefCell};
@@ -751,7 +755,7 @@ impl BrowserView {
         let keys = gtk::EventControllerKey::new();
         keys.set_propagation_phase(gtk::PropagationPhase::Capture);
         let weak_state = Rc::downgrade(&state);
-        keys.connect_key_pressed(move |_, _, _, _| {
+        keys::on_press(&keys, move |_, _| {
             if let Some(state) = weak_state.upgrade() {
                 state.cancel_click_rename();
             }
@@ -2816,14 +2820,15 @@ fn single_pane_preview_reservation(width: i32) -> i32 {
     width.max(0) / 2
 }
 
-fn vim_focus_direction(key: gtk::gdk::Key) -> Option<gtk::DirectionType> {
-    match key {
-        gtk::gdk::Key::h => Some(gtk::DirectionType::Left),
-        gtk::gdk::Key::j => Some(gtk::DirectionType::Down),
-        gtk::gdk::Key::k => Some(gtk::DirectionType::Up),
-        gtk::gdk::Key::l => Some(gtk::DirectionType::Right),
-        _ => None,
-    }
+fn vim_focus_direction(press: &KeyPress) -> Option<gtk::DirectionType> {
+    [
+        (VIM_LEFT, gtk::DirectionType::Left),
+        (VIM_DOWN, gtk::DirectionType::Down),
+        (VIM_UP, gtk::DirectionType::Up),
+        (VIM_RIGHT, gtk::DirectionType::Right),
+    ]
+    .into_iter()
+    .find_map(|(binding, direction)| press.is(binding).then_some(direction))
 }
 
 mod chooser_context;

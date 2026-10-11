@@ -13,9 +13,14 @@ use crate::ui::browser::{ViewState, vim_focus_direction};
 use crate::ui::controls::{
     ModalTone, focus_button, message_dialog_description, message_dialog_layout, modal_layout,
 };
+use crate::ui::keys::{
+    self, KeyPress,
+    bindings::{ENTER_ANY, ESCAPE_ANY, LEFT, RIGHT, TENXER_DELETE_CONFIRM, VIM_LEFT, VIM_RIGHT},
+};
 use crate::ui::modal::{
     ModalHost, dismiss_modal_layer, dismiss_modal_layer_then, modal_layer, show_error_dialog,
 };
+use gtk::gdk::ModifierType as Modifiers;
 use gtk::prelude::*;
 use gtk::{gio, glib};
 use std::cell::RefCell;
@@ -116,11 +121,14 @@ enum DeleteConfirmationFocus {
     Confirm,
 }
 
-fn delete_confirmation_focus_target(key: gtk::gdk::Key) -> Option<DeleteConfirmationFocus> {
-    match key {
-        gtk::gdk::Key::Left | gtk::gdk::Key::h => Some(DeleteConfirmationFocus::Cancel),
-        gtk::gdk::Key::Right | gtk::gdk::Key::l => Some(DeleteConfirmationFocus::Confirm),
-        _ => None,
+fn delete_confirmation_focus_target(press: &KeyPress) -> Option<DeleteConfirmationFocus> {
+    const ARROW_MODIFIERS: Modifiers = Modifiers::SHIFT_MASK.union(Modifiers::SUPER_MASK);
+    if press.is_any(&[LEFT.ignoring(ARROW_MODIFIERS), VIM_LEFT]) {
+        Some(DeleteConfirmationFocus::Cancel)
+    } else if press.is_any(&[RIGHT.ignoring(ARROW_MODIFIERS), VIM_RIGHT]) {
+        Some(DeleteConfirmationFocus::Confirm)
+    } else {
+        None
     }
 }
 
@@ -348,8 +356,8 @@ impl ViewState {
         }
         let escape = gtk::EventControllerKey::new();
         let weak_escape = Rc::downgrade(self);
-        escape.connect_key_pressed(move |_, key, _, _| {
-            if key == gtk::gdk::Key::Escape {
+        keys::on_press(&escape, move |_, press| {
+            if press.is(ESCAPE_ANY) {
                 if let Some(state) = weak_escape.upgrade() {
                     state.clear_trash_loading();
                 }
@@ -505,15 +513,12 @@ impl ViewState {
         let escape_overlay = window_overlay.clone();
         let escape_root = blurred_root.clone();
         let escape_browser = self.browser.clone();
-        keys.connect_key_pressed(move |_, key, _, modifiers| {
-            if key == gtk::gdk::Key::Escape {
+        keys::on_press(&keys, move |_, press| {
+            if press.is(ESCAPE_ANY) {
                 dismiss_modal_layer(&escape_layer, &escape_overlay, escape_root.as_ref());
                 escape_browser.focus_active();
                 glib::Propagation::Stop
-            } else if !modifiers
-                .intersects(gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::ALT_MASK)
-                && let Some(direction) = vim_focus_direction(key)
-            {
+            } else if let Some(direction) = vim_focus_direction(press) {
                 focused_layer.child_focus(direction);
                 glib::Propagation::Stop
             } else {
@@ -719,15 +724,12 @@ impl ViewState {
         let escaped_root = blurred_root;
         let escaped_browser = self.browser.clone();
         let focused_layer = layer.clone();
-        keys.connect_key_pressed(move |_, key, _, modifiers| {
-            if key == gtk::gdk::Key::Escape {
+        keys::on_press(&keys, move |_, press| {
+            if press.is(ESCAPE_ANY) {
                 dismiss_modal_layer(&escaped_layer, &escaped_overlay, escaped_root.as_ref());
                 escaped_browser.focus_active();
                 glib::Propagation::Stop
-            } else if !modifiers
-                .intersects(gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::ALT_MASK)
-                && let Some(direction) = vim_focus_direction(key)
-            {
+            } else if let Some(direction) = vim_focus_direction(press) {
                 focused_layer.child_focus(direction);
                 glib::Propagation::Stop
             } else {
@@ -1008,12 +1010,12 @@ impl ViewState {
         let focused_cancel_initial = cancel.clone();
         let focused_confirm = confirm.clone();
         let enter_buttons = [cancel, confirm.clone(), close];
-        keys.connect_key_pressed(move |_, key, _, modifiers| {
-            if key == gtk::gdk::Key::Escape {
+        keys::on_press(&keys, move |_, press| {
+            if press.is(ESCAPE_ANY) {
                 dismiss_modal_layer(&escaped_layer, &escaped_overlay, escaped_root.as_ref());
                 escaped_browser.focus_active();
                 glib::Propagation::Stop
-            } else if key == gtk::gdk::Key::Return || key == gtk::gdk::Key::KP_Enter {
+            } else if press.is(ENTER_ANY) {
                 if let Some(button) = enter_buttons.iter().find(|button| button.has_focus()) {
                     button.emit_clicked();
                     glib::Propagation::Stop
@@ -1021,23 +1023,15 @@ impl ViewState {
                     glib::Propagation::Proceed
                 }
             } else if trash
-                && key == gtk::gdk::Key::d
-                && !modifiers.intersects(
-                    gtk::gdk::ModifierType::CONTROL_MASK
-                        | gtk::gdk::ModifierType::ALT_MASK
-                        | gtk::gdk::ModifierType::SUPER_MASK,
-                )
+                && press.is(TENXER_DELETE_CONFIRM)
                 && crate::ui::preferences::PreferenceManager::shared().tenxer_mode()
             {
                 focused_confirm.emit_clicked();
                 glib::Propagation::Stop
-            } else if !modifiers
-                .intersects(gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::ALT_MASK)
-            {
-                match delete_confirmation_focus_target(key) {
-                    Some(DeleteConfirmationFocus::Cancel) => focused_cancel.grab_focus(),
-                    Some(DeleteConfirmationFocus::Confirm) => focused_confirm.grab_focus(),
-                    None => return glib::Propagation::Proceed,
+            } else if let Some(target) = delete_confirmation_focus_target(press) {
+                match target {
+                    DeleteConfirmationFocus::Cancel => focused_cancel.grab_focus(),
+                    DeleteConfirmationFocus::Confirm => focused_confirm.grab_focus(),
                 };
                 if let Some(window) = focused_cancel.root().and_downcast::<gtk::Window>() {
                     window.set_focus_visible(true);
