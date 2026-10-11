@@ -120,6 +120,27 @@ impl Chooser {
             .unwrap_or_default()
     }
 
+    /// The keys and actions of the visible chord panel.
+    fn chord_panel(&self) -> Vec<String> {
+        let mut labels = Vec::new();
+        let panel = widget_with_class(self.state.window.upcast_ref(), "shortcut-chord-popover");
+        let mut pending: Vec<_> = panel
+            .filter(|panel| panel.is_visible())
+            .into_iter()
+            .collect();
+        while let Some(widget) = pending.pop() {
+            if let Some(label) = widget.downcast_ref::<gtk::Label>() {
+                labels.push(label.text().to_string());
+            }
+            let mut child = widget.first_child();
+            while let Some(current) = child {
+                child = current.next_sibling();
+                pending.push(current);
+            }
+        }
+        labels
+    }
+
     fn prompt(&self) -> gtk::Entry {
         widget_with_class(self.state.window.upcast_ref(), "shortcut-footer-prompt")
             .and_downcast::<gtk::Entry>()
@@ -377,6 +398,15 @@ fn chooser_refuses_commands_its_request_does_not_allow() {
             assert_eq!(chooser.cursor_name().as_deref(), Some("a.txt"));
 
             chooser.press(Key::g);
+            wait_until(|| chooser.chord_panel().iter().any(|label| label == "Recent"));
+            let panel = chooser.chord_panel();
+            assert!(panel.iter().any(|label| label == "Pins"), "{panel:?}");
+            for refused in ["Trash", "Network", "Pin / unpin folder"] {
+                assert!(
+                    !panel.iter().any(|label| label == refused),
+                    "the g panel offers {refused}: {panel:?}"
+                );
+            }
             chooser.press(Key::t);
             assert_eq!(chooser.feedback(), "Only local folders can be opened here");
             chooser.press(Key::g);

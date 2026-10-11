@@ -131,15 +131,8 @@ struct ChordIndicator {
 }
 
 impl ChordIndicator {
-    fn set(&self, chord: Option<Chord>) {
-        let rows = chord.map(|chord| {
-            chord
-                .options()
-                .into_iter()
-                .map(|(keys, action)| (keys.label(), crate::i18n::tr(action)))
-                .collect::<Vec<_>>()
-        });
-        self.set_with(chord, rows.unwrap_or_default());
+    fn clear(&self) {
+        self.set_with(None, Vec::new());
     }
 
     fn set_with(&self, chord: Option<Chord>, rows: Vec<(String, String)>) {
@@ -951,7 +944,7 @@ impl ShortcutFooter {
                     if let Some(prompt) = prompt.upgrade() {
                         prompt.close();
                     }
-                    chords.set(None);
+                    chords.clear();
                 }
                 if let (Some(categories), Some(search), Some(scroll)) =
                     (categories.upgrade(), search.upgrade(), scroll.upgrade())
@@ -1146,7 +1139,7 @@ impl ShortcutFooter {
 
     pub(in crate::ui) fn open_prompt_with(&self, kind: Prompt, text: &str) -> bool {
         // An armed chord must stay visible, and the prompt covers its mark.
-        self.chords.set(None);
+        self.chords.clear();
         self.prompt.open(&self.root, kind, text)
     }
 
@@ -1304,7 +1297,13 @@ impl ShortcutFooter {
     }
 
     pub(in crate::ui) fn arm_chord(&self, chord: Chord) {
-        self.chords.set(Some(chord));
+        let chooser = self.reference_scope.get().chooser.is_some();
+        let rows = chord
+            .options(chooser)
+            .into_iter()
+            .map(|(keys, action)| (keys.label(), crate::i18n::tr(action)))
+            .collect();
+        self.chords.set_with(Some(chord), rows);
     }
 
     pub(in crate::ui) fn arm_chord_with(&self, chord: Chord, rows: Vec<(String, String)>) {
@@ -1316,7 +1315,7 @@ impl ShortcutFooter {
     }
 
     pub(in crate::ui) fn cancel_chord(&self) {
-        self.chords.set(None);
+        self.chords.clear();
     }
 
     pub(in crate::ui) fn connect_chord_changed(&self, listener: impl Fn(Option<Chord>) + 'static) {

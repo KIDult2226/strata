@@ -105,8 +105,12 @@ impl Chord {
     }
 
     /// The second keys and their untranslated actions. The `;` panel lists
-    /// the matching actions itself.
-    pub(crate) fn options(self) -> Vec<(super::shortcut_reference::Mention, &'static str)> {
+    /// the matching actions itself, and a file chooser leaves out the steps
+    /// it refuses.
+    pub(crate) fn options(
+        self,
+        chooser: bool,
+    ) -> Vec<(super::shortcut_reference::Mention, &'static str)> {
         use super::{
             keys::{Keys, Keys::One, bindings::*},
             shortcut_reference::Mention,
@@ -130,10 +134,17 @@ impl Chord {
             ),
             (Mention::Keys(One(GO_PROMPT)), "Type a path"),
         ];
+        // Choosers open only local folders and Recent, and keep pins as they are.
+        const CHOOSER_REFUSES: [Mention; 3] = [
+            Mention::Keys(One(GO_TRASH)),
+            Mention::Keys(One(GO_NETWORK)),
+            Mention::Keys(Keys::Any(&[GO_PIN, GO_UNPIN])),
+        ];
         let step = |binding| Mention::Keys(One(binding));
         let go = |first| -> Vec<_> {
             std::iter::once((step(GO_FIRST), first))
                 .chain(GO_STEPS.iter().copied())
+                .filter(|(keys, _)| !(chooser && CHOOSER_REFUSES.contains(keys)))
                 .collect()
         };
         match self {
