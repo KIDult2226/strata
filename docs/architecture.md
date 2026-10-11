@@ -402,8 +402,9 @@ other windows are refreshed on their next bookmark action, not by a live monitor
 
 ### Window keyboard routing
 
-`ui/window/keyboard.rs` owns the window's capture-phase keyboard dispatcher. Its ordered
-stages preserve shortcut precedence: modal and editing ownership, window/file commands,
+`ui/window/keyboard.rs` owns the window's capture-phase keyboard dispatcher. Like every key
+handler, it reads presses through `ui::keys` and matches catalog bindings (see
+[keyboard shortcuts](keyboard-shortcuts.md)). Its ordered stages preserve shortcut precedence: modal and editing ownership, window/file commands,
 focus traversal, transient dismissal, then item/directory navigation. The private
 `commands.rs`, `focus.rs`, and `items.rs` modules implement those responsibilities without
 introducing another browser controller. A stage returning `None` continues through Strata's
