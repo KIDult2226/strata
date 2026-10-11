@@ -137,6 +137,35 @@ The common path costs one `match_()` call and a range check. `map_keycode`
 runs only for keys outside ASCII, and nothing is cached, so no keymap-change
 listeners are needed.
 
+### Built on GTK
+
+The hard parts come from GDK, which Strata already uses. `ui::keys` adds only
+what GTK lacks.
+
+- `KeyEvent::match_()` handles Caps Lock, consumed modifiers, and case folding.
+  Do not reimplement them.
+- `Display::map_keycode()` supplies the other layouts' characters for the
+  fallback.
+- `gtk::accelerator_name()` builds a menu item's `accel` string from a binding.
+
+GTK lacks three things: a fallback when no configured layout is Latin,
+position-based digits (its own matching misses **Ctrl+1** on AZERTY), and a
+single answer per event. `KeyEvent::matches()` is not called per binding:
+Strata's dispatcher tries bindings in order, so a physical-key match checked
+first could beat an exact match checked later, and each non-exact check looks
+up the keymap again.
+
+Labels do not use `gtk::accelerator_get_label()` or `GtkShortcutLabel`
+(deprecated since GTK 4.18). GTK puts Shift first, capitalizes plain letters so
+**j** and **J** look the same, spells out arrows and symbols, leaves some names
+untranslated, and translates with the system locale rather than Strata's
+language setting. Its translations are still a useful reference when filling in
+the key-name table.
+
+No third-party crate is needed. `keycode` or `xkbcommon` could stand in for the
+US-QWERTY table, but that table is about 50 static entries. `keyboard-types`
+and `xkeysym` duplicate types GDK already provides.
+
 ### Window actions
 
 Search (**Ctrl+K**), jump to folder (**Ctrl+Shift+K**), open terminal
