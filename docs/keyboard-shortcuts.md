@@ -42,7 +42,25 @@ Shortcuts follow the key's label first, then its physical position:
 - **Input methods** for Korean, Japanese, and Chinese run on a Latin layout and
   pass Ctrl shortcuts through, so the same rules apply without special cases.
 
-The F1 reference and Settings name keys by their US labels.
+## Shortcut labels
+
+Every place that shows a shortcut renders it from the binding the app matches:
+the F1 reference, Settings, context menus, and footer hints. A displayed
+shortcut is therefore always one that works.
+
+- **Labels show the Latin key**: **Ctrl+C** with a Russian layout active,
+  **Ctrl+1** on AZERTY. Keyboards for non-Latin layouts print the Latin letters
+  too, and AZERTY keyboards print the digits, so the label is on the key to
+  press. Labels do not change when the active layout changes.
+- **Key names follow the interface language**, the way keyboards sold for it are
+  printed: German shows **Strg+C** and **Entf**, French **Suppr**, Spanish
+  **Supr**. Languages whose keyboards print English names keep them.
+- **One notation everywhere.** Modifiers appear in the order Ctrl, Alt, Shift,
+  Super. Arrows are ↑ ↓ ← →, and other keys use their full names (Enter,
+  Escape, Delete, Page Up). After a modifier, letters are uppercase and Shift is
+  spelled out (**Ctrl+Shift+N**). Without a modifier, a letter appears as typed
+  (**j**) and Shift+letter as the uppercase letter (**J**), the 10xer
+  convention. Chords are separated by a space (**g h**).
 
 ## Reading key input in code
 
@@ -67,14 +85,38 @@ to the handler.
 - `text()` returns the typed character, for typing consumers only.
 - `is_modifier()` reports a bare modifier key press.
 
-### `Binding`
+### `Binding` and the binding catalog
 
 A `Binding` is a canonical key plus exact modifiers: `Binding::plain(Key::j)`,
 `Binding::ctrl(Key::c)`, `Binding::ctrl_shift(Key::k)`, or
-`Binding::new(key, modifiers)`. Declare bindings as named constants beside the
-handler that owns them, for example `const COPY: Binding = Binding::ctrl(Key::c);`.
-Letters are lowercase with Shift explicit. Symbol bindings name the symbol
-(`Key::plus`), never the key that types it on a US keyboard.
+`Binding::new(key, modifiers)`. Letters are lowercase with Shift explicit.
+Symbol bindings name the symbol (`Key::plus`), never the key that types it on a
+US keyboard.
+
+Every shortcut is a named constant in the binding catalog,
+`ui::keys::bindings`, grouped by area: `pub const COPY: Binding =
+Binding::ctrl(Key::c);`. Handlers match catalog constants, and the F1 reference
+(`ui/shortcut_reference.rs`), context-menu hints, and footer hints refer to the
+same constants. Dispatch logic stays in the handlers; the catalog only defines
+keys.
+
+What a reference row or hint shows is a `Keys` value, never free text:
+
+- one binding: **Ctrl+C**
+- alternatives: **F2 / Ctrl+R**
+- a chord: **g h**
+- a digit range with its modifiers: **Ctrl+Shift+1–9 / 0**
+
+### Labels
+
+`keys::label` is the only code that turns bindings into text. Key names come
+from one translated table (`keys.name.*` in every catalog). Context templates
+such as `%{keys} in header` stay translatable and receive the formatted label.
+
+Menus display the formatter's text too. GTK formats a menu item's `accel`
+attribute itself: it puts Shift first, capitalizes letters, and uses its own
+translations. So menu rows must not show GTK's rendering of an `accel` string,
+and no code may build an accelerator string by parsing a label.
 
 ### Normalization
 
@@ -115,13 +157,15 @@ GTK's own text bindings handle it.
 
 ## Adding or changing a shortcut
 
-1. Declare a `Binding` constant beside its handler and match it with
+1. Add the binding to `ui::keys::bindings` and match it in the handler with
    `press.is(…)` or `press.digit(…)`.
-2. Never compare `text()` or a raw keyval to recognize a command, and never add
-   a second spelling (an uppercase letter or a US shifted symbol) to cover
-   another layout.
-3. Add or update the row in `ui/shortcut_reference.rs` and translate its text in
-   every catalog (see [internationalization](internationalization.md)).
+2. Reference the same constant from its F1 row in `ui/shortcut_reference.rs`
+   and from any context hint. The label renders itself; translate only the
+   action text, in every catalog (see
+   [internationalization](internationalization.md)).
+3. Never compare `text()` or a raw keyval to recognize a command, never type a
+   key label by hand, and never add a second spelling (an uppercase letter or a
+   US shifted symbol) to cover another layout.
 4. Extend the normalizer table tests when a binding uses a symbol or digit, and
    add end-to-end coverage for a new input route.
 
@@ -129,8 +173,12 @@ GTK's own text bindings handle it.
 
 `ui::keys::tests` drives the pure normalizer from hand-written keymap rows for
 US, Russian, Ukrainian, Greek, Hebrew, French AZERTY, German QWERTZ, Dvorak,
-Caps Lock, and a Russian-only keymap. Run them with
-`./scripts/test-headless.py keys::`.
+Caps Lock, and a Russian-only keymap. They also cover label rendering
+(notation, translated key names, chords, digit ranges) and catalog completeness:
+every catalog binding appears in at least one F1 scope (mode, 10xer, chooser) or
+is explicitly marked as unlisted. Run them with
+`./scripts/test-headless.py keys::`, and run `./scripts/test-headless.py i18n::`
+after changing key names.
 
 End-to-end scenarios switch layouts on the harness's private Xvfb: `setxkbmap`
 loads the layouts and an XKB group lock selects the active one. Never change the
