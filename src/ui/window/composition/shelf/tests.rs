@@ -3,7 +3,6 @@
 use super::{Shelf, ShelfView};
 use crate::model::Location;
 use gtk::{gdk, gio, glib, prelude::*};
-use std::{cell::RefCell, rc::Rc};
 
 #[test]
 fn collecting_files_preserves_sources_and_ignores_duplicate_drops()
@@ -79,7 +78,7 @@ fn file_drop_controller_stages_native_and_uri_lists_without_changing_sources() {
             std::fs::write(&first_path, b"first").expect("first source file");
             std::fs::write(&second_path, b"second").expect("second source file");
             let shelf = Shelf::shared();
-            let view = ShelfView::new(Rc::new(RefCell::new(None)));
+            let view = ShelfView::new();
             let target = drop_target(view.widget.upcast_ref()).expect("shelf file drop controller");
             let viewer = find_widget(view.widget.upcast_ref(), &|widget| {
                 widget.is::<gtk::Popover>() && drop_target(widget).is_some()
@@ -125,16 +124,12 @@ fn file_drop_controller_stages_native_and_uri_lists_without_changing_sources() {
                 assert!(!target.emit_by_name::<bool>("drop", &[&invalid, &0.0f64, &0.0f64]));
                 assert_eq!(shelf.locations(), expected);
             }
-            let clear = find_widget(view.widget.upcast_ref(), &|widget| {
-                widget
-                    .downcast_ref::<gtk::Label>()
-                    .is_some_and(|label| label.text() == "Clear shelf")
+            find_widget(view.widget.upcast_ref(), &|widget| {
+                widget.is::<gtk::Button>()
+                    && widget.tooltip_text().as_deref() == Some("Clear shelf")
             })
-            .expect("clear shelf action");
-            clear
-                .ancestor(gtk::Button::static_type())
-                .expect("clear shelf button")
-                .emit_by_name::<()>("clicked", &[]);
+            .expect("clear shelf button")
+            .emit_by_name::<()>("clicked", &[]);
             assert!(shelf.locations().is_empty());
             assert_eq!(
                 std::fs::read(&first_path).expect("first source bytes"),

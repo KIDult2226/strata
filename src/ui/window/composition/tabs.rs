@@ -137,12 +137,10 @@ impl TabWindow {
         });
         let weak = Rc::downgrade(&state);
         window.connect_is_active_notify(move |window| {
-            if let Some(state) = weak.upgrade() {
-                if window.is_active() {
-                    super::shelf::set_active(window, &state.active_browser());
-                } else {
-                    state.show_hints(false);
-                }
+            if window.is_active() {
+                super::shelf::set_owner(window);
+            } else if let Some(state) = weak.upgrade() {
+                state.show_hints(false);
             }
         });
         state
@@ -253,7 +251,6 @@ impl TabWindow {
             previous.content.browser.cancel_location_edit();
         }
         self.active.set(id);
-        super::shelf::set_active(&window, &tab.content.browser);
         self.stack.set_visible_child(&tab.content.overlay);
         tab.content.activate_actions(&window);
         self.refresh_chrome();

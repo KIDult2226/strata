@@ -1240,12 +1240,9 @@
   "Hide shelf": "Ocultar el estante",
   "Move shelf": "Mover el estante",
   "Drag to move the shelf": "Arrastre para mover el estante",
-  "Shelf actions": "Acciones del estante",
   "Shelf preview": "Vista previa del estante",
   "Drop files here": "Suelte archivos aquí",
   "Show individual shelf items": "Mostrar cada elemento del estante",
   "Shelf items": "Elementos del estante",
-  "Clear shelf": "Vaciar el estante",
-  "Add selection": "Añadir la selección",
-  "Choose a regular folder as the destination.": "Elija una carpeta normal como destino."
+  "Clear shelf": "Vaciar el estante"
 }

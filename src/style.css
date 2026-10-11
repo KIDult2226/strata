@@ -3400,6 +3400,7 @@ button.file-shelf-control.column-header-action,
 
 .file-shelf-count.column-header-action > button {
   background: @strata_highlight;
+  color: @strata_text;
   border-radius: 999px;
   padding: 2px 12px;
 }

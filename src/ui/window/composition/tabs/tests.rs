@@ -541,13 +541,24 @@ fn closing_tabs_releases_observers_and_keeps_other_contexts_alive() {
     );
 }
 
+fn clear_shelf(card: &gtk::Widget) {
+    find_widget(card, &|widget| {
+        widget.is::<gtk::Button>() && widget.tooltip_text().as_deref() == Some("Clear shelf")
+    })
+    .expect("clear shelf button")
+    .emit_by_name::<()>("clicked", &[]);
+}
+
 #[test]
 fn closing_the_shelf_owner_preserves_staged_files_for_another_window() {
     gtk_test(
         "ui::window::composition::tabs::tests::closing_the_shelf_owner_preserves_staged_files_for_another_window",
         || {
             let application = application();
-            for (action, source_remains) in [("Copy here", true), ("Move here", false)] {
+            for (commit, source_remains) in [
+                (crate::services::DropCommit::Copy, true),
+                (crate::services::DropCommit::Move, false),
+            ] {
                 let root = tempfile::tempdir().expect("shelf owner fixture");
                 let first_folder = root.path().join("first");
                 let second_folder = root.path().join("second");
@@ -561,7 +572,7 @@ fn closing_the_shelf_owner_preserves_staged_files_for_another_window() {
                     &second_tabs.active_browser(),
                     Location::local(&second_folder),
                 );
-                shelf::set_active(&first, &closed_browser);
+                shelf::set_owner(&first);
                 gtk::prelude::WidgetExt::activate_action(&first, "win.show-shelf", None)
                     .expect("open shelf from first window");
                 let floating = application
@@ -591,31 +602,11 @@ fn closing_the_shelf_owner_preserves_staged_files_for_another_window() {
                     gtk::prelude::WidgetExt::activate_action(&second, "win.show-shelf", None)
                         .expect("reopen shelf from second window");
                 }
-                let caption_matches = |widget: &gtk::Widget| {
-                    widget
-                        .downcast_ref::<gtk::Label>()
-                        .is_some_and(|label| label.text() == action)
-                };
-                let actions = find_widget(&card, &|widget| {
-                    widget
-                        .downcast_ref::<gtk::MenuButton>()
-                        .and_then(|menu| menu.popover())
-                        .and_then(|popover| popover.child())
-                        .is_some_and(|child| find_widget(&child, &caption_matches).is_some())
-                })
-                .expect("shelf actions menu")
-                .downcast::<gtk::MenuButton>()
-                .expect("shelf menu button")
-                .popover()
-                .expect("shelf actions popover");
-                actions.popup();
-                let command =
-                    find_widget(&actions.child().expect("shelf actions"), &caption_matches)
-                        .expect("transfer command");
-                let command = command
-                    .ancestor(gtk::Button::static_type())
-                    .expect("transfer button");
-                assert!(command.activate(), "activate {action}");
+                second_tabs.active_browser().commit_file_drop(
+                    Location::local(&second_folder),
+                    vec![Location::local(&path)],
+                    commit,
+                );
                 let expected_count = if source_remains { "1 item" } else { "0 items" };
                 wait_until(|| {
                     second_folder.join("staged.txt").exists()
@@ -638,24 +629,14 @@ fn closing_the_shelf_owner_preserves_staged_files_for_another_window() {
                         .expect("transferred bytes"),
                     "staged bytes",
                 );
-                assert_eq!(path.exists(), source_remains, "{action} source retention");
+                assert_eq!(path.exists(), source_remains, "{commit:?} source retention");
                 if source_remains {
                     assert_eq!(
                         std::fs::read_to_string(path).expect("retained source bytes"),
                         "staged bytes"
                     );
                 }
-                let clear_caption = |widget: &gtk::Widget| {
-                    widget
-                        .downcast_ref::<gtk::Label>()
-                        .is_some_and(|label| label.text() == "Clear shelf")
-                };
-                let clear = find_widget(&actions.child().expect("shelf actions"), &clear_caption)
-                    .expect("clear shelf command");
-                clear
-                    .ancestor(gtk::Button::static_type())
-                    .expect("clear shelf button")
-                    .emit_by_name::<()>("clicked", &[]);
+                clear_shelf(&card);
                 second.close();
                 wait_until(|| !second.is_realized());
             }
@@ -795,16 +776,7 @@ fn shelf_retains_unmoved_items_after_failed_and_cancelled_transfers() {
                         "confirmed moved entries must be removed"
                     );
                 }
-                let clear = find_widget(&card, &|widget| {
-                    widget
-                        .downcast_ref::<gtk::Label>()
-                        .is_some_and(|label| label.text() == "Clear shelf")
-                })
-                .expect("clear shelf command");
-                clear
-                    .ancestor(gtk::Button::static_type())
-                    .expect("clear shelf button")
-                    .emit_by_name::<()>("clicked", &[]);
+                clear_shelf(&card);
             }
             window.destroy();
         },

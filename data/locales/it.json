@@ -1240,12 +1240,9 @@
   "Hide shelf": "Nascondi il ripiano",
   "Move shelf": "Sposta il ripiano",
   "Drag to move the shelf": "Trascina per spostare il ripiano",
-  "Shelf actions": "Azioni del ripiano",
   "Shelf preview": "Anteprima del ripiano",
   "Drop files here": "Rilascia i file qui",
   "Show individual shelf items": "Mostra i singoli elementi del ripiano",
   "Shelf items": "Elementi del ripiano",
-  "Clear shelf": "Svuota il ripiano",
-  "Add selection": "Aggiungi la selezione",
-  "Choose a regular folder as the destination.": "Scegli una cartella normale come destinazione."
+  "Clear shelf": "Svuota il ripiano"
 }

@@ -1240,12 +1240,9 @@
   "Hide shelf": "선반 숨기기",
   "Move shelf": "선반 이동",
   "Drag to move the shelf": "드래그하여 선반 이동",
-  "Shelf actions": "선반 작업",
   "Shelf preview": "선반 미리 보기",
   "Drop files here": "여기에 파일 놓기",
   "Show individual shelf items": "선반 항목 개별 표시",
   "Shelf items": "선반 항목",
-  "Clear shelf": "선반 비우기",
-  "Add selection": "선택 항목 추가",
-  "Choose a regular folder as the destination.": "일반 폴더를 대상으로 선택하세요."
+  "Clear shelf": "선반 비우기"
 }

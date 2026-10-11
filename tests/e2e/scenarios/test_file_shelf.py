@@ -27,17 +27,17 @@ def _count(strata, count):
     )
 
 
-def _action(strata, label):
-    shelf = _shelf(strata)
-    if shelf.find(name="Add selection", rendered=True) is None:
-        strata.pointer.click(shelf.find(role="button", name="Shelf actions"))
-    return strata.wait(
-        lambda: shelf.find(name=label, rendered=True),
-        f"shelf action {label} to appear",
+def _drag_stack(strata, shelf, destination, *, modifiers=()):
+    preview = shelf.find(role="grouping", name="Shelf preview")
+    assert preview is not None, shelf.dump()
+    strata.pointer.drag_points(
+        preview.screen_bounds().center,
+        destination.screen_bounds().center,
+        modifiers=modifiers,
     )
 
 
-def test_collect_from_two_folders_and_copy_to_current_folder(strata):
+def test_collect_from_two_folders_and_copy_out(strata):
     fixture = strata.fixture
     shelf = _open_shelf(strata)
     _drag_onto_shelf(strata, strata.entry("todo.txt"), shelf)
@@ -49,8 +49,7 @@ def test_collect_from_two_folders_and_copy_to_current_folder(strata):
     _count(strata, 2)
     assert fixture.path("documents/notes.txt").exists()
 
-    strata.open_directory("archive")
-    strata.pointer.click(_action(strata, "Copy here"))
+    _drag_stack(strata, shelf, strata.entry("archive"), modifiers=["ctrl"])
     strata.wait(
         lambda: fixture.path("archive/todo.txt").exists()
         and fixture.path("archive/notes.txt").exists(),
@@ -63,14 +62,12 @@ def test_collect_from_two_folders_and_copy_to_current_folder(strata):
 
 def test_shelf_is_shared_across_tabs(strata):
     fixture = strata.fixture
-    _open_shelf(strata)
-    strata.select_entry("todo.txt")
-    strata.pointer.click(_action(strata, "Add selection"))
+    shelf = _open_shelf(strata)
+    _drag_onto_shelf(strata, strata.entry("todo.txt"), shelf)
     _count(strata, 1)
 
     strata.pointer.click(strata.window.find(role="button", name="New tab"))
-    strata.open_directory("archive")
-    strata.pointer.click(_action(strata, "Copy here"))
+    _drag_stack(strata, shelf, strata.entry("archive"), modifiers=["ctrl"])
     strata.wait(lambda: fixture.path("archive/todo.txt").exists(), "copy from the other tab")
     assert fixture.path("todo.txt").exists()
 
@@ -80,25 +77,7 @@ def test_drag_shelved_stack_into_folder(strata):
     shelf = _open_shelf(strata)
     _drag_onto_shelf(strata, strata.entry("todo.txt"), shelf)
     _count(strata, 1)
-    preview = shelf.find(role="grouping", name="Shelf preview")
-    assert preview is not None, shelf.dump()
-    strata.pointer.drag(preview, strata.entry("archive"))
+    _drag_stack(strata, shelf, strata.entry("archive"))
     strata.wait(lambda: fixture.path("archive/todo.txt").exists(), "shelved file to arrive")
     assert not fixture.path("todo.txt").exists()
     _count(strata, 0)
-
-
-def test_add_selection_then_move_explicitly(strata):
-    fixture = strata.fixture
-    _open_shelf(strata)
-    strata.select_entry("todo.txt")
-    strata.pointer.click(_action(strata, "Add selection"))
-    _count(strata, 1)
-    assert fixture.path("todo.txt").exists()
-
-    strata.open_directory("archive")
-    strata.pointer.click(_action(strata, "Move here"))
-    strata.wait(lambda: fixture.path("archive/todo.txt").exists(), "shelved file to move")
-    assert not fixture.path("todo.txt").exists()
-    _count(strata, 0)
-    assert fixture.path("archive/todo.txt").exists()

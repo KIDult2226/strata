@@ -1240,12 +1240,9 @@
   "Hide shelf": "シェルフを隠す",
   "Move shelf": "シェルフを移動",
   "Drag to move the shelf": "ドラッグしてシェルフを移動",
-  "Shelf actions": "シェルフの操作",
   "Shelf preview": "シェルフのプレビュー",
   "Drop files here": "ここにファイルをドロップ",
   "Show individual shelf items": "シェルフの各項目を表示",
   "Shelf items": "シェルフの項目",
-  "Clear shelf": "シェルフを空にする",
-  "Add selection": "選択項目を追加",
-  "Choose a regular folder as the destination.": "通常のフォルダーを移動先に選択してください。"
+  "Clear shelf": "シェルフを空にする"
 }

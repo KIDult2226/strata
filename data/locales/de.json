@@ -1240,12 +1240,9 @@
   "Hide shelf": "Ablage ausblenden",
   "Move shelf": "Ablage verschieben",
   "Drag to move the shelf": "Ziehen, um die Ablage zu verschieben",
-  "Shelf actions": "Ablageaktionen",
   "Shelf preview": "Ablagevorschau",
   "Drop files here": "Dateien hier ablegen",
   "Show individual shelf items": "Einzelne Elemente der Ablage anzeigen",
   "Shelf items": "Elemente der Ablage",
-  "Clear shelf": "Ablage leeren",
-  "Add selection": "Auswahl hinzufügen",
-  "Choose a regular folder as the destination.": "Wählen Sie einen normalen Ordner als Ziel."
+  "Clear shelf": "Ablage leeren"
 }

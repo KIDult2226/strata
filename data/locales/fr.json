@@ -1240,12 +1240,9 @@
   "Hide shelf": "Masquer l’étagère",
   "Move shelf": "Déplacer l’étagère",
   "Drag to move the shelf": "Faites glisser pour déplacer l’étagère",
-  "Shelf actions": "Actions de l’étagère",
   "Shelf preview": "Aperçu de l’étagère",
   "Drop files here": "Déposez des fichiers ici",
   "Show individual shelf items": "Afficher chaque élément de l’étagère",
   "Shelf items": "Éléments de l’étagère",
-  "Clear shelf": "Vider l’étagère",
-  "Add selection": "Ajouter la sélection",
-  "Choose a regular folder as the destination.": "Choisissez un dossier ordinaire comme destination."
+  "Clear shelf": "Vider l’étagère"
 }

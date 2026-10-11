@@ -10,21 +10,18 @@ use std::{
 
 use gtk::{gdk, gio, glib, prelude::*};
 
+use super::layout::header_action;
 use crate::{
     app::BrowserEvent,
-    assets::{self, icons},
+    assets::icons,
     i18n::tr,
     model::Location,
-    services::DropCommit,
-    ui::browser::paths::is_trash_location,
     ui::browser::{
-        BrowserView, WeakBrowserView, clear_active_drag, context_menu_option, file_drag_locations,
-        icon_for_name, locations_equal, locations_from_file_list_value, show_error_dialog,
+        BrowserView, clear_active_drag, file_drag_locations, icon_for_name, locations_equal,
+        locations_from_file_list_value,
     },
     ui::thumbnail::{self, ThumbnailSlot},
-    ui::{
-        controls, scrolling::popover::dismiss_on_outside_scroll, shortcut_reference::ContextHint,
-    },
+    ui::{controls, scrolling::popover::dismiss_on_outside_scroll},
 };
 
 mod shake;
@@ -114,7 +111,6 @@ impl Shelf {
 
 struct FloatingShelf {
     window: gtk::Window,
-    active_browser: Rc<RefCell<Option<WeakBrowserView>>>,
     _view: ShelfView,
     hyprland: Option<Hyprland>,
 }
@@ -142,8 +138,7 @@ pub(super) fn install(
     });
     FLOATING.with(|slot| {
         if slot.borrow().is_none() {
-            let active_browser = Rc::new(RefCell::new(Some(browser.downgrade())));
-            let view = ShelfView::new(active_browser.clone());
+            let view = ShelfView::new();
             let floating = gtk::Window::builder()
                 .application(&application)
                 .title(tr("Strata Shelf"))
@@ -157,7 +152,6 @@ pub(super) fn install(
             let hyprland = Hyprland::current();
             let controller = Rc::new(FloatingShelf {
                 window: floating,
-                active_browser,
                 _view: view,
                 hyprland,
             });
@@ -181,14 +175,12 @@ pub(super) fn install(
     });
     let action = gio::SimpleAction::new("show-shelf", None);
     action.connect_activate({
-        let browser = browser.downgrade();
         let window = window.downgrade();
         move |_, _| {
             let shelf = FLOATING.with(|slot| slot.borrow().clone());
             if let Some(shelf) = shelf
                 && let Some(window) = window.upgrade()
             {
-                shelf.active_browser.replace(Some(browser.clone()));
                 shelf.window.set_transient_for(Some(&window));
                 shelf.show(None);
             }
@@ -197,10 +189,9 @@ pub(super) fn install(
     actions.add_action(&action);
 }
 
-pub(super) fn set_active(window: &gtk::ApplicationWindow, browser: &BrowserView) {
+pub(super) fn set_owner(window: &gtk::ApplicationWindow) {
     let shelf = FLOATING.with(|slot| slot.borrow().clone());
     if let Some(shelf) = shelf {
-        shelf.active_browser.replace(Some(browser.downgrade()));
         shelf.window.set_transient_for(Some(window));
     }
 }
@@ -227,7 +218,6 @@ pub(super) fn owner_closed(window: &gtk::ApplicationWindow, application: &gtk::A
                 .is_none_or(|owner| owner == window.upcast_ref::<gtk::Window>())
             {
                 shelf.window.set_visible(false);
-                shelf.active_browser.take();
                 shelf.window.set_transient_for(Some(&next));
             }
         } else {
@@ -265,19 +255,30 @@ struct ShelfView {
 }
 
 impl ShelfView {
-    fn new(active_browser: Rc<RefCell<Option<WeakBrowserView>>>) -> Self {
+    fn new() -> Self {
         let shelf = Shelf::shared();
         let widget = gtk::Box::new(gtk::Orientation::Vertical, 0);
         widget.add_css_class("file-shelf");
         let bar = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         bar.add_css_class("file-shelf-bar");
-        let close = gtk::Button::new();
-        close.set_child(Some(&assets::primary_icon(icons::X, 16)));
-        let hide = tr("Hide shelf");
-        close.set_tooltip_text(Some(&hide));
-        crate::ui::accessibility::set_label(&close, &hide);
-        controls::pane_header_action(&close);
-        close.add_css_class("file-shelf-control");
+        let clear_label = tr("Clear shelf");
+        let clear = header_action(icons::ERASER, &clear_label);
+        crate::ui::accessibility::set_label(&clear, &clear_label);
+        clear.connect_clicked({
+            let shelf = shelf.clone();
+            move |_| shelf.clear()
+        });
+        bar.append(&clear);
+        let handle = gtk::WindowHandle::new();
+        handle.set_hexpand(true);
+        handle.set_child(Some(&gtk::Box::new(gtk::Orientation::Horizontal, 0)));
+        handle.set_cursor_from_name(Some("grab"));
+        crate::ui::accessibility::set_label(&handle, &tr("Move shelf"));
+        crate::ui::accessibility::set_description(&handle, Some(&tr("Drag to move the shelf")));
+        bar.append(&handle);
+        let hide_label = tr("Hide shelf");
+        let close = header_action(icons::X, &hide_label);
+        crate::ui::accessibility::set_label(&close, &hide_label);
         close.connect_clicked({
             let widget = widget.downgrade();
             move |_| {
@@ -291,22 +292,6 @@ impl ShelfView {
             }
         });
         bar.append(&close);
-        let handle = gtk::WindowHandle::new();
-        handle.set_hexpand(true);
-        handle.set_child(Some(&gtk::Box::new(gtk::Orientation::Horizontal, 0)));
-        handle.set_cursor_from_name(Some("grab"));
-        crate::ui::accessibility::set_label(&handle, &tr("Move shelf"));
-        crate::ui::accessibility::set_description(&handle, Some(&tr("Drag to move the shelf")));
-        bar.append(&handle);
-        let menu = gtk::MenuButton::new();
-        menu.set_child(Some(&assets::primary_icon(icons::ELLIPSIS, 16)));
-        menu.set_direction(gtk::ArrowType::None);
-        controls::pane_header_action(&menu);
-        menu.add_css_class("file-shelf-control");
-        let menu_label = tr("Shelf actions");
-        menu.set_tooltip_text(Some(&menu_label));
-        crate::ui::accessibility::set_label(&menu, &menu_label);
-        bar.append(&menu);
         widget.append(&bar);
 
         let preview = gtk::Overlay::builder()
@@ -369,79 +354,6 @@ impl ShelfView {
         scroll.set_child(Some(&list));
         viewer.set_child(Some(&scroll));
         viewer.add_controller(shelf_drop_target(shelf.clone()));
-        let action_popover = gtk::Popover::new();
-        action_popover.set_has_arrow(false);
-        action_popover.add_css_class("column-popover");
-        dismiss_on_outside_scroll(&action_popover);
-        menu.set_popover(Some(&action_popover));
-        let actions = gtk::Box::new(gtk::Orientation::Vertical, 4);
-        actions.add_css_class("column-menu");
-        let clear = context_menu_option(icons::X, "Clear shelf", ContextHint::None);
-        clear.connect_clicked({
-            let shelf = shelf.clone();
-            move |_| shelf.clear()
-        });
-        actions.append(&clear);
-        let add = context_menu_option(icons::PLUS, "Add selection", ContextHint::None);
-        add.connect_clicked({
-            let shelf = shelf.clone();
-            let active_browser = active_browser.clone();
-            move |_| {
-                if let Some(browser) = active_browser
-                    .borrow()
-                    .as_ref()
-                    .and_then(WeakBrowserView::upgrade)
-                {
-                    shelf.add(
-                        browser
-                            .browser()
-                            .selected_entries()
-                            .into_iter()
-                            .map(|entry| entry.location),
-                    );
-                }
-            }
-        });
-        actions.append(&add);
-        let copy = context_menu_option(icons::COPY, "Copy here", ContextHint::None);
-        let move_button = context_menu_option(icons::FOLDER_INPUT, "Move here", ContextHint::None);
-        for (button, commit) in [(&copy, DropCommit::Copy), (&move_button, DropCommit::Move)] {
-            let active_browser = active_browser.clone();
-            let shelf = shelf.clone();
-            button.connect_clicked(move |_| {
-                let Some(browser) = active_browser
-                    .borrow()
-                    .as_ref()
-                    .and_then(WeakBrowserView::upgrade)
-                else {
-                    return;
-                };
-                let Some(destination) = browser.browser().active_location() else {
-                    return;
-                };
-                if destination.is_recent_location() || is_trash_location(&destination) {
-                    show_error_dialog(
-                        &browser.widget(),
-                        &tr("Unable to transfer"),
-                        &tr("Choose a regular folder as the destination."),
-                    );
-                    return;
-                }
-                browser.commit_file_drop(destination, shelf.locations(), commit);
-            });
-        }
-        actions.append(&copy);
-        actions.append(&move_button);
-        action_popover.set_child(Some(&actions));
-        for button in [&clear, &add, &copy, &move_button] {
-            let popover = action_popover.downgrade();
-            button.connect_clicked(move |_| {
-                if let Some(popover) = popover.upgrade() {
-                    popover.popdown();
-                }
-            });
-        }
-
         widget.add_controller(shelf_drop_target(shelf.clone()));
 
         let refresh: Rc<dyn Fn()> = Rc::new({
@@ -453,8 +365,6 @@ impl ShelfView {
             let middle = middle.downgrade();
             let back = back.downgrade();
             let clear = clear.downgrade();
-            let copy = copy.downgrade();
-            let move_button = move_button.downgrade();
             move || {
                 let (
                     Some(shelf),
@@ -465,8 +375,6 @@ impl ShelfView {
                     Some(middle),
                     Some(back),
                     Some(clear),
-                    Some(copy),
-                    Some(move_button),
                 ) = (
                     shelf.upgrade(),
                     list.upgrade(),
@@ -476,8 +384,6 @@ impl ShelfView {
                     middle.upgrade(),
                     back.upgrade(),
                     clear.upgrade(),
-                    copy.upgrade(),
-                    move_button.upgrade(),
                 )
                 else {
                     return;
@@ -505,8 +411,6 @@ impl ShelfView {
                 hint.set_visible(!has_items);
                 count.set_sensitive(has_items);
                 clear.set_sensitive(has_items);
-                copy.set_sensitive(has_items);
-                move_button.set_sensitive(has_items);
                 for location in locations {
                     let row = gtk::Box::new(gtk::Orientation::Vertical, 6);
                     row.add_css_class("file-shelf-item");
@@ -520,7 +424,7 @@ impl ShelfView {
                     let thumbnail = gtk::Overlay::new();
                     thumbnail.set_child(Some(&card));
                     let remove = gtk::Button::new();
-                    remove.set_child(Some(&assets::primary_icon(icons::X, 15)));
+                    remove.set_child(Some(&crate::assets::primary_icon(icons::X, 15)));
                     let remove_label =
                         rust_i18n::t!("Remove “%{name}” from shelf", name = name).into_owned();
                     remove.set_tooltip_text(Some(&remove_label));

@@ -87,8 +87,8 @@ pub(crate) use crate::ui::browser::collection::{
 };
 pub(in crate::ui) use crate::ui::browser::collection::{FilterQueryBinding, bind_filter_query};
 pub(super) use crate::ui::browser::context_menu::{
-    ContextMenuTarget, ContextMenuTrigger, ContextResolver, context_menu_option,
-    install_folder_context_menu, install_item_context_menu, install_resolved_item_context_menu,
+    ContextMenuTarget, ContextMenuTrigger, ContextResolver, install_folder_context_menu,
+    install_item_context_menu, install_resolved_item_context_menu,
 };
 pub(super) use crate::ui::browser::desktop::{launch_terminal, open_location_at};
 pub(super) use crate::ui::browser::entry::{

@@ -1240,12 +1240,9 @@
   "Hide shelf": "Hide shelf",
   "Move shelf": "Move shelf",
   "Drag to move the shelf": "Drag to move the shelf",
-  "Shelf actions": "Shelf actions",
   "Shelf preview": "Shelf preview",
   "Drop files here": "Drop files here",
   "Show individual shelf items": "Show individual shelf items",
   "Shelf items": "Shelf items",
-  "Clear shelf": "Clear shelf",
-  "Add selection": "Add selection",
-  "Choose a regular folder as the destination.": "Choose a regular folder as the destination."
+  "Clear shelf": "Clear shelf"
 }
