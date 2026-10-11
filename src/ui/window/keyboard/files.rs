@@ -66,7 +66,8 @@ fn action_slot(press: &KeyPress) -> Option<(u8, usize)> {
 }
 
 fn slot_key(index: usize) -> String {
-    ((index + 1) % 10).to_string()
+    use crate::ui::keys::{self, bindings::ACTIONS_NUMBERS};
+    keys::digit_label(ACTIONS_NUMBERS.step(), ((index + 1) % 10) as u8)
 }
 
 impl Dispatcher {
@@ -236,10 +237,17 @@ impl Dispatcher {
     }
 
     fn arm_actions(&self) {
+        use crate::ui::keys::{
+            self, Keys,
+            bindings::{
+                ACTIONS_COMPRESS, ACTIONS_EXTRACT, ACTIONS_EXTRACT_TO, ACTIONS_NUMBERS,
+                ACTIONS_TERMINAL,
+            },
+        };
         let numbered = self.view.numbered_actions();
         let mut rows = if numbered.actions.is_empty() {
             vec![(
-                "1\u{2013}0".to_owned(),
+                keys::label(&Keys::Digits(ACTIONS_NUMBERS.step())),
                 crate::i18n::tr("No matching actions"),
             )]
         } else {
@@ -252,12 +260,12 @@ impl Dispatcher {
         };
         rows.extend(
             [
-                ("t", "Open terminal here"),
-                ("c", "Compress\u{2026}"),
-                ("e", "Extract here"),
-                ("E", "Extract to\u{2026}"),
+                (ACTIONS_TERMINAL, "Open terminal here"),
+                (ACTIONS_COMPRESS, "Compress\u{2026}"),
+                (ACTIONS_EXTRACT, "Extract here"),
+                (ACTIONS_EXTRACT_TO, "Extract to\u{2026}"),
             ]
-            .map(|(key, action)| (key.to_owned(), crate::i18n::tr(action))),
+            .map(|(step, action)| (keys::label(&Keys::One(step)), crate::i18n::tr(action))),
         );
         self.armed_actions.replace(Some(ArmedActions {
             ids: numbered

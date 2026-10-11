@@ -352,8 +352,8 @@ fn update_item(item: &gio::MenuItem, button: &gtk::Button) {
         item.set_label(Some(&label.replace('_', "__")));
     }
     let shortcut = labels.get(1).map(String::as_str).unwrap_or("");
-    let description = button
-        .downcast_ref::<super::presentation::MenuOption>()
+    let option = button.downcast_ref::<super::presentation::MenuOption>();
+    let description = option
         .map(|option| option.menu_description())
         .filter(|description| !description.is_empty())
         .unwrap_or_else(|| shortcut.to_owned());
@@ -362,26 +362,14 @@ fn update_item(item: &gio::MenuItem, button: &gtk::Button) {
         "x-strata-danger",
         Some(&button.has_css_class("danger").to_variant()),
     );
-    if shortcut.is_empty() {
-        item.set_attribute_value("accel", None);
-        return;
-    }
-    let accelerator = shortcut
-        .split(" / ")
-        .next()
-        .unwrap_or(shortcut)
-        .replace("Ctrl+", "<Control>")
-        .replace("Shift+", "<Shift>")
-        .replace("Alt+", "<Alt>")
-        .replace('↵', "Return");
-    let accelerator = match accelerator.as_str() {
-        "Del" => "Delete".to_owned(),
-        "Enter" => "Return".to_owned(),
-        "Space" => "space".to_owned(),
-        "<Shift>Del" => "<Shift>Delete".to_owned(),
-        "<Control>Enter" => "<Control>Return".to_owned(),
-        "<Shift>Enter" => "<Shift>Return".to_owned(),
-        _ => accelerator,
-    };
-    item.set_attribute_value("accel", Some(&accelerator.to_variant()));
+    item.set_attribute_value("x-strata-shortcut", Some(&shortcut.to_variant()));
+    let accelerator = option
+        .map(|option| option.accelerator())
+        .filter(|accelerator| !accelerator.is_empty());
+    item.set_attribute_value(
+        "accel",
+        accelerator
+            .map(|accelerator| accelerator.to_variant())
+            .as_ref(),
+    );
 }

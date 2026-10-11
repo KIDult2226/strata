@@ -106,16 +106,18 @@ impl Candidates {
 
     // Preserve explicit selection across batches, but let the default follow ranking.
     pub(super) fn set(&self, paths: Vec<PathBuf>, keys: CandidateKeys) {
-        let action = |message: &str| glib::markup_escape_text(&crate::i18n::tr(message));
-        let tab = keys
-            .tab
-            .map_or_else(String::new, |tab| format!("<b>Tab</b> {}   ", action(tab)));
-        self.keys.set_markup(&format!(
-            "<b>\u{2191}\u{2193}</b> {}   {tab}<b>\u{21b5}</b> {}   <b>Esc</b> {}",
-            action("Choose"),
-            action(keys.enter),
-            action("Cancel")
-        ));
+        use crate::ui::keys::{
+            Keys,
+            bindings::{COMPLETE, DOWN, ENTER, ESCAPE, UP},
+        };
+        let mut hints = vec![(Keys::Any(&[UP, DOWN]), "Choose")];
+        hints.extend(keys.tab.map(|tab| (Keys::One(COMPLETE), tab)));
+        hints.extend([
+            (Keys::One(ENTER), keys.enter),
+            (Keys::One(ESCAPE), "Cancel"),
+        ]);
+        self.keys
+            .set_markup(&crate::ui::shortcut_reference::legend_markup(&hints));
         while let Some(row) = self.list.first_child() {
             self.list.remove(&row);
         }

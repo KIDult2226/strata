@@ -25,7 +25,8 @@ use super::keys::{
 use super::{
     browser::FilterStatus,
     browser_modes::BrowserMode,
-    shortcut_reference::{ChooserScope, ReferenceScope, Shortcut},
+    keys::{self, Keys, bindings},
+    shortcut_reference::{ChooserScope, ReferenceScope, Shortcut, with_keys},
     tenxer_mode::{Chord, Prompt},
 };
 
@@ -134,8 +135,8 @@ impl ChordIndicator {
         let rows = chord.map(|chord| {
             chord
                 .options()
-                .iter()
-                .map(|(key, action)| ((*key).to_owned(), crate::i18n::tr(action)))
+                .into_iter()
+                .map(|(keys, action)| (keys.label(), crate::i18n::tr(action)))
                 .collect::<Vec<_>>()
         });
         self.set_with(chord, rows.unwrap_or_default());
@@ -144,7 +145,7 @@ impl ChordIndicator {
     fn set_with(&self, chord: Option<Chord>, rows: Vec<(String, String)>) {
         let previous = self.armed.replace(chord);
         if let Some(mark) = self.mark.upgrade() {
-            mark.set_text(chord.map_or("", Chord::mark));
+            mark.set_text(&chord.map(Chord::mark).unwrap_or_default());
             mark.set_visible(chord.is_some());
             match chord {
                 Some(chord) if previous != Some(chord) => {
@@ -649,8 +650,9 @@ impl ShortcutFooter {
         paste.add_css_class("shortcut-footer-paste");
         crate::ui::accessibility::set_description(
             &paste,
-            Some(&crate::i18n::tr(
-                "Press Ctrl+V to paste into a supported directory.",
+            Some(&with_keys(
+                "Press %{keys} to paste into a supported directory.",
+                Keys::One(bindings::PASTE),
             )),
         );
         paste.set_visible(false);
@@ -694,14 +696,17 @@ impl ShortcutFooter {
         let show_hints = Rc::new(Cell::new(true));
 
         let more = gtk::ToggleButton::new();
-        more.set_child(Some(&gtk::Label::new(Some(&crate::i18n::tr(
-            "F1  Shortcuts",
-        )))));
+        let reference = Keys::One(bindings::REFERENCE);
+        let more_label = with_keys("%{keys}  Shortcuts", reference);
+        more.set_child(Some(&gtk::Label::new(Some(&more_label))));
         more.add_css_class("shortcut-footer-button");
-        super::accessibility::set_label(&more, &crate::i18n::tr("F1  Shortcuts"));
+        super::accessibility::set_label(&more, &more_label);
         crate::ui::accessibility::set_description(
             &more,
-            Some(&crate::i18n::tr("Show all file-view shortcuts (F1)")),
+            Some(&with_keys(
+                "Show all file-view shortcuts (%{keys})",
+                reference,
+            )),
         );
         status.prepend(&more);
         let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
@@ -756,9 +761,7 @@ impl ShortcutFooter {
         content.append(&body);
         let footer_note = gtk::Box::new(gtk::Orientation::Horizontal, 12);
         footer_note.add_css_class("shortcut-reference-footer");
-        let note_text = crate::i18n::tr(
-            "Ctrl+B categories · Ctrl+F search · Ctrl+L list · arrows/hjkl move · Tab cycle · Esc close",
-        );
+        let note_text = reference_note();
         let note = gtk::Label::new(Some(&note_text));
         note.set_attributes(Some(&hint_note_attributes(&note_text)));
         note.set_wrap(true);
@@ -1559,8 +1562,26 @@ impl ShortcutFooter {
     }
 }
 
+fn reference_note() -> String {
+    use bindings::{
+        DOWN, ESCAPE, FOCUS_NEXT, REFERENCE_CATEGORIES, REFERENCE_LIST, REFERENCE_SEARCH, UP,
+        VIM_DOWN, VIM_UP,
+    };
+    let label = |shown| keys::label(&shown);
+    rust_i18n::t!(
+        "%{category_keys} categories · %{search_keys} search · %{list_keys} list · %{move_keys} move · %{cycle_keys} cycle · %{close_keys} close",
+        category_keys = label(Keys::One(REFERENCE_CATEGORIES)),
+        search_keys = label(Keys::One(REFERENCE_SEARCH)),
+        list_keys = label(Keys::One(REFERENCE_LIST)),
+        move_keys = label(Keys::Any(&[VIM_DOWN, VIM_UP, UP, DOWN])),
+        cycle_keys = label(Keys::One(FOCUS_NEXT)),
+        close_keys = label(Keys::One(ESCAPE))
+    )
+    .into_owned()
+}
+
 /// Keeps each hint, with the separator that follows it, on one line so the note wraps
-/// only after a "·", never inside a hint such as "arrows/hjkl move".
+/// only after a "·", never inside a hint such as "j / k / ↑ / ↓ move".
 fn hint_note_attributes(note: &str) -> gtk::pango::AttrList {
     const SEPARATOR: &str = " · ";
     let attributes = gtk::pango::AttrList::new();
@@ -1752,15 +1773,7 @@ fn render_reference(
         let rows: Vec<_> = section
             .rows
             .into_iter()
-            .filter(|shortcut| {
-                query.is_empty()
-                    || shortcut.keys.to_lowercase().contains(&query)
-                    || shortcut.key_text().to_lowercase().contains(&query)
-                    || shortcut.action.to_lowercase().contains(&query)
-                    || crate::i18n::tr(shortcut.action)
-                        .to_lowercase()
-                        .contains(&query)
-            })
+            .filter(|shortcut| shortcut.matches(&query))
             .collect();
         if !rows.is_empty() {
             found = true;
@@ -2032,7 +2045,7 @@ fn append_section(parent: &gtk::Box, title: &str, shortcuts: &[Shortcut], compac
         );
         row.add_css_class("shortcut-reference-row");
         let action = gtk::Label::builder()
-            .label(crate::i18n::tr(shortcut.action))
+            .label(shortcut.action_text())
             .xalign(0.0)
             .hexpand(true)
             .wrap(true)

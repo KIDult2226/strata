@@ -691,3 +691,29 @@ fn catalog_bindings_use_the_canonical_key() {
     }
     assert!(checked > 0);
 }
+
+#[test]
+fn every_listed_binding_appears_in_a_reference_scope() {
+    use super::{Keys, bindings::Entry};
+    fn shows(keys: &Keys, entry: Entry) -> bool {
+        match (keys, entry) {
+            (Keys::One(binding), Entry::Binding(wanted)) => *binding == wanted,
+            (Keys::Any(bindings) | Keys::Chord(bindings), Entry::Binding(wanted)) => {
+                bindings.contains(&wanted)
+            }
+            (Keys::Digits(digits), Entry::Digits(wanted)) => *digits == wanted,
+            (Keys::Mixed(alternatives), _) => alternatives.iter().any(|keys| shows(keys, entry)),
+            _ => false,
+        }
+    }
+    let shown = crate::ui::shortcut_reference::listed_keys();
+    let mut checked = 0;
+    for (name, entry) in super::bindings::listed() {
+        checked += 1;
+        assert!(
+            shown.iter().any(|keys| shows(keys, entry)),
+            "{name} is listed, but no reference scope shows it; add a row or mark it unlisted"
+        );
+    }
+    assert!(checked > 0);
+}

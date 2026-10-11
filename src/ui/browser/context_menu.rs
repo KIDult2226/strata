@@ -1014,7 +1014,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     let open_multiple = item_context_option(
         crate::assets::icons::EXTERNAL_LINK,
         "Open",
-        ContextHint::OpenMultiple,
+        ContextHint::Open,
     );
     let open_in_multiple = item_context_option(
         crate::assets::icons::EXTERNAL_LINK,
@@ -2052,7 +2052,7 @@ pub(super) fn context_menu_danger_option(
 ) -> gtk::Button {
     let translated = crate::i18n::tr(label);
     let label = translated.as_str();
-    let button = crate::ui::accessibility::menu_item_button();
+    let button = presentation::menu_item_button();
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     let icon = crate::assets::danger_icon(icon, 15);
     icon.add_css_class("folder-context-icon");
@@ -2076,27 +2076,44 @@ fn context_menu_toggle_option(
     label: &str,
     hint: ContextHint,
 ) -> (gtk::Button, gtk::Image, gtk::Label) {
-    let button = crate::ui::accessibility::menu_item_button();
+    let button = presentation::menu_item_button();
     let (row, icon, title) = context_menu_row(icon, label, hint, &button);
     button.add_css_class("folder-context-option");
     button.set_child(Some(&row));
     (button, icon, title)
 }
 
+/// The accelerator is set before the hint text, whose change rebuilds the
+/// native menu row that reads both.
 fn bind_context_hint(button: &gtk::Button, shortcut: &gtk::Label, label: &str, hint: ContextHint) {
     let button = button.downgrade();
     let label = label.to_owned();
     PreferenceManager::shared().bind_preference(
         shortcut,
         move |preferences| shortcut_reference::context_hint_for(hint, preferences),
-        move |widget, text| {
+        move |widget, hinted| {
             let shown = widget
                 .downcast_ref::<gtk::Label>()
                 .expect("context hint label");
-            shown.set_text(text);
+            let text = hinted
+                .map(|keys| crate::ui::keys::label(&keys))
+                .unwrap_or_default();
+            let button = button.upgrade();
+            if let Some(option) = button
+                .as_ref()
+                .and_then(|button| button.downcast_ref::<presentation::MenuOption>())
+            {
+                option.set_accelerator(
+                    hinted
+                        .and_then(shortcut_reference::menu_accelerator)
+                        .map(|binding| binding.accelerator())
+                        .unwrap_or_default(),
+                );
+            }
+            shown.set_text(&text);
             shown.set_visible(!text.is_empty());
-            if let Some(button) = button.upgrade() {
-                crate::ui::accessibility::describe_menu_item(&button, &label, text);
+            if let Some(button) = button {
+                crate::ui::accessibility::describe_menu_item(&button, &label, &text);
             }
         },
     );

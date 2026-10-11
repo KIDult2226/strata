@@ -762,11 +762,14 @@ pub(super) fn build_appearance_menu(
                 preferences,
             )
         },
-        move |widget, text| {
+        move |widget, hint| {
             let shortcut = widget
                 .downcast_ref::<gtk::Label>()
                 .expect("preview shortcut label");
-            shortcut.set_text(text);
+            let text = hint
+                .map(|keys| crate::ui::keys::label(&keys))
+                .unwrap_or_default();
+            shortcut.set_text(&text);
             shortcut.set_visible(!text.is_empty());
             if let Some(toggle) = description_toggle.upgrade() {
                 crate::ui::accessibility::set_description(

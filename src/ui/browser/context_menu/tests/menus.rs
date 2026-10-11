@@ -274,11 +274,11 @@ fn context_hints_follow_the_active_map() {
             let menu = open_menu(&view, Some("notes.txt"));
             let hints = label_texts(&menu);
             assert!(hints.iter().any(|hint| hint == "Space"), "{hints:?}");
-            assert!(hints.iter().any(|hint| hint == "Y"), "{hints:?}");
+            assert!(hints.iter().any(|hint| hint == "y"), "{hints:?}");
             manager.set_type_to_search(true);
             let hints = label_texts(&menu);
             assert!(
-                !hints.iter().any(|hint| hint == "Y"),
+                !hints.iter().any(|hint| hint == "y"),
                 "type-to-search claims y: {hints:?}"
             );
             menu.popdown();
@@ -295,11 +295,11 @@ fn context_hints_follow_the_active_map() {
                     .map(String::as_str)
             };
             for (label, hint) in [
-                ("Rename", "R"),
-                ("Cut", "X"),
-                ("Copy", "Y"),
-                ("Move to Trash", "D"),
-                ("Permanently delete", "Shift+D"),
+                ("Rename", "r"),
+                ("Cut", "x"),
+                ("Copy", "y"),
+                ("Move to Trash", "d"),
+                ("Permanently delete", "D"),
                 ("Copy path", "Copy name"),
             ] {
                 assert_eq!(after(label), Some(hint), "{hints:?}");
@@ -309,8 +309,8 @@ fn context_hints_follow_the_active_map() {
                 "{hints:?}"
             );
             assert!(
-                hints.iter().any(|hint| hint == "I"),
-                "GTK renders the i accelerator as I: {hints:?}"
+                hints.iter().any(|hint| hint == "i"),
+                "the menu shows Strata's label, not GTK's rendering of the accelerator: {hints:?}"
             );
             menu.popdown();
             view.browser().clear_observer();
@@ -440,7 +440,7 @@ fn directory_rows_offer_the_open_in_submenu() {
             for entry in ["Open", "Open in…", "New Tab", "New Window"] {
                 assert!(labels.iter().any(|text| text == entry), "{labels:?}");
             }
-            for hint in ["Ctrl+Return", "Shift+Return"] {
+            for hint in ["Ctrl+Enter", "Shift+Enter"] {
                 assert!(labels.iter().any(|text| text == hint), "{labels:?}");
             }
             menu.popdown();

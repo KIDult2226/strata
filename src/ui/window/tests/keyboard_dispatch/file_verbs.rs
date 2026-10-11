@@ -917,7 +917,13 @@ fn tenxer_numbered_actions_run_the_listed_match_on_the_current_targets() {
             wait_until(|| fixture.shortcuts.chord_options().is_some());
             assert_eq!(
                 fixture.shortcuts.chord_options().expect("options"),
-                owned_rows(&[&[("1\u{2013}0", "No matching actions")], LETTERED_ACTIONS].concat())
+                owned_rows(
+                    &[
+                        &[("1\u{2013}9 / 0", "No matching actions")],
+                        LETTERED_ACTIONS
+                    ]
+                    .concat()
+                )
             );
             plain(&fixture, Key::_1);
             assert_eq!(feedback(&fixture), "No action 1");

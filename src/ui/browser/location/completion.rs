@@ -120,13 +120,17 @@ impl PathCompletion {
         content_box.append(&scroll);
 
         let shortcuts = gtk::Label::new(None);
-        let hint = |key: &str| glib::markup_escape_text(&crate::i18n::tr(key));
-        shortcuts.set_markup(&format!(
-            "<b>Tab</b> {}   <b>↑↓</b> {}   <b>↵</b> {}",
-            hint("completion.complete"),
-            hint("Choose"),
-            hint("Open"),
-        ));
+        {
+            use crate::ui::keys::{
+                Keys,
+                bindings::{COMPLETE, DOWN, ENTER, UP},
+            };
+            shortcuts.set_markup(&crate::ui::shortcut_reference::legend_markup(&[
+                (Keys::One(COMPLETE), "completion.complete"),
+                (Keys::Any(&[UP, DOWN]), "Choose"),
+                (Keys::One(ENTER), "Open"),
+            ]));
+        }
         shortcuts.set_xalign(0.0);
         shortcuts.add_css_class("path-completion-shortcuts");
         content_box.append(&shortcuts);

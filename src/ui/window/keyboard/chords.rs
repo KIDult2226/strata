@@ -212,9 +212,12 @@ impl Dispatcher {
                     .filter(|index| *index < 9)
                 {
                     Some(index) => rust_i18n::t!(
-                        "Pinned “%{name}” as g %{number}",
+                        "Pinned “%{name}” as %{keys}",
                         name = name,
-                        number = index + 1
+                        keys = crate::ui::keys::digit_label(
+                            crate::ui::keys::bindings::PIN_NUMBERS,
+                            (index + 1) as u8
+                        )
                     )
                     .into_owned(),
                     None => rust_i18n::t!("Pinned “%{name}”", name = name).into_owned(),

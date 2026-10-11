@@ -88,65 +88,77 @@ pub(crate) enum Chord {
 }
 
 impl Chord {
-    pub(crate) fn mark(self) -> &'static str {
-        match self {
-            Self::Go | Self::PreviewTop => "g-",
-            Self::Copy => "c-",
-            Self::Sort => ",-",
-            Self::Action => ";-",
-            Self::Tabs => "t-",
-        }
+    /// The pending chord's first key, as its footer pill shows it.
+    pub(crate) fn mark(self) -> String {
+        use super::keys::{
+            Keys,
+            bindings::{ACTIONS, COPY_AS, GO, SORT_BY, TAB_CHORD},
+        };
+        let prefix = match self {
+            Self::Go | Self::PreviewTop => GO,
+            Self::Copy => COPY_AS,
+            Self::Sort => SORT_BY,
+            Self::Action => ACTIONS,
+            Self::Tabs => TAB_CHORD,
+        };
+        format!("{}-", super::keys::label(&Keys::One(prefix)))
     }
 
-    pub(crate) fn options(self) -> &'static [(&'static str, &'static str)] {
+    /// The second keys and their untranslated actions. The `;` panel lists
+    /// the matching actions itself.
+    pub(crate) fn options(self) -> Vec<(super::shortcut_reference::Mention, &'static str)> {
+        use super::{
+            keys::{Keys, Keys::One, bindings::*},
+            shortcut_reference::Mention,
+        };
+        const GO_STEPS: [(Mention, &str); 14] = [
+            (Mention::Keys(One(GO_FOLLOW)), "Follow search result"),
+            (Mention::Keys(One(GO_HOME)), "Home"),
+            (Mention::Keys(One(GO_DOWNLOADS)), "Downloads"),
+            (Mention::Keys(One(GO_CONFIG)), "Config"),
+            (Mention::Keys(One(GO_TRASH)), "Trash"),
+            (Mention::Keys(One(GO_NETWORK)), "Network"),
+            (Mention::Keys(One(GO_RECENT)), "Recent"),
+            (Mention::Keys(One(GO_DOCUMENTS)), "Documents"),
+            (Mention::Keys(One(GO_MUSIC)), "Music"),
+            (Mention::Keys(One(GO_PICTURES)), "Pictures"),
+            (Mention::Keys(One(GO_VIDEOS)), "Videos"),
+            (Mention::Keys(Keys::Digits(PIN_NUMBERS.step())), "Pins"),
+            (
+                Mention::Keys(Keys::Any(&[GO_PIN, GO_UNPIN])),
+                "Pin / unpin folder",
+            ),
+            (Mention::Keys(One(GO_PROMPT)), "Type a path"),
+        ];
+        let step = |binding| Mention::Keys(One(binding));
+        let go = |first| -> Vec<_> {
+            std::iter::once((step(GO_FIRST), first))
+                .chain(GO_STEPS.iter().copied())
+                .collect()
+        };
         match self {
-            Self::Go => &[
-                ("g", "First item"),
-                ("f", "Follow search result"),
-                ("h", "Home"),
-                ("d", "Downloads"),
-                ("c", "Config"),
-                ("t", "Trash"),
-                ("n", "Network"),
-                ("r", "Recent"),
-                ("k", "Documents"),
-                ("m", "Music"),
-                ("p", "Pictures"),
-                ("v", "Videos"),
-                ("1–9", "Pins"),
-                ("+ / -", "Pin / unpin folder"),
-                ("Space", "Type a path"),
+            Self::Go => go("First item"),
+            Self::PreviewTop => go("Top"),
+            Self::Copy => vec![
+                (step(COPY_AS_PATH), "Copy path"),
+                (step(COPY_AS_NAME), "Copy name"),
             ],
-            Self::PreviewTop => &[
-                ("g", "Top"),
-                ("f", "Follow search result"),
-                ("h", "Home"),
-                ("d", "Downloads"),
-                ("c", "Config"),
-                ("t", "Trash"),
-                ("n", "Network"),
-                ("r", "Recent"),
-                ("k", "Documents"),
-                ("p", "Pictures"),
-                ("v", "Videos"),
-                ("1–9", "Pins"),
-                ("+ / -", "Pin / unpin folder"),
-                ("Space", "Type a path"),
+            Self::Sort => vec![
+                (step(SORT_BY_NAME), "Name"),
+                (step(SORT_BY_MODIFIED), "Modified"),
+                (step(SORT_BY_SIZE), "Size"),
+                (step(SORT_BY_TYPE), "Type"),
+                (Mention::Held(gtk::gdk::ModifierType::SHIFT_MASK), "Reverse"),
             ],
-            Self::Copy => &[("c", "Copy path"), ("n", "Copy name")],
-            Self::Sort => &[
-                ("a", "Name"),
-                ("m", "Modified"),
-                ("s", "Size"),
-                ("e", "Type"),
-                ("Shift", "Reverse"),
-            ],
-            Self::Action => &[],
-            Self::Tabs => &[
-                ("n", "New tab"),
-                ("x", "Close tab"),
-                ("t", "Previous tab"),
-                ("1–9 / 0", "Select tab"),
+            Self::Action => Vec::new(),
+            Self::Tabs => vec![
+                (step(TAB_CHORD_NEW), "New tab"),
+                (step(TAB_CHORD_CLOSE), "Close tab"),
+                (step(TAB_CHORD_PREVIOUS), "Previous tab"),
+                (
+                    Mention::Keys(Keys::Digits(TAB_CHORD_NUMBERS.step())),
+                    "Select tab",
+                ),
             ],
         }
     }
@@ -171,9 +183,13 @@ pub(crate) enum Prompt {
 impl Prompt {
     /// The find labels are keycaps; the others are translated.
     pub(crate) fn label(self) -> String {
+        use super::keys::{
+            Keys,
+            bindings::{FIND, FIND_BACKWARD},
+        };
         let label = match self {
-            Self::Find => return "/".to_owned(),
-            Self::FindBackward => return "?".to_owned(),
+            Self::Find => return super::keys::label(&Keys::One(FIND)),
+            Self::FindBackward => return super::keys::label(&Keys::One(FIND_BACKWARD)),
             Self::Filter => "filter:",
             Self::Search => "search:",
             Self::Go => "go \u{203a}",

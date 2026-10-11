@@ -652,6 +652,7 @@ pub(super) fn refresh_presentation(
 struct ItemPresentation {
     label: String,
     description: String,
+    shortcut: String,
     submenu: Option<gio::MenuModel>,
     icon_size: i32,
     send_to_device: bool,
@@ -672,6 +673,7 @@ fn collect_presentations(model: &gio::MenuModel, items: &mut Vec<ItemPresentatio
             items.push(ItemPresentation {
                 label: label.replace("__", "_"),
                 description: string("x-strata-description").unwrap_or_default(),
+                shortcut: string("x-strata-shortcut").unwrap_or_default(),
                 submenu: model.item_link(index, "submenu"),
                 icon_size: model
                     .item_attribute_value(index, "x-strata-icon-size", None)
@@ -853,6 +855,16 @@ fn label_menu_item(widget: &gtk::Widget, item: &ItemPresentation) {
         gtk::accessible::Property::Label(&item.label),
         gtk::accessible::Property::Description(&item.description),
     ]);
+    // GTK renders the `accel` attribute itself; the row shows Strata's label.
+    let mut child = widget.first_child();
+    while let Some(current) = child {
+        child = current.next_sibling();
+        if current.css_name() == "accelerator"
+            && let Some(accelerator) = current.downcast_ref::<gtk::Label>()
+        {
+            accelerator.set_label(&item.shortcut);
+        }
+    }
 }
 
 fn native_item_presentation(
