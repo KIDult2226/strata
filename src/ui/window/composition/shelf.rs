@@ -309,7 +309,9 @@ impl ShelfView {
         bar.append(&menu);
         widget.append(&bar);
 
-        let preview = gtk::Overlay::new();
+        let preview = gtk::Overlay::builder()
+            .accessible_role(gtk::AccessibleRole::Group)
+            .build();
         preview.add_css_class("file-shelf-preview");
         crate::ui::accessibility::set_label(&preview, &tr("Shelf preview"));
         let (back_card, back) = preview_card(96);

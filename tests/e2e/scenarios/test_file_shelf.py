@@ -14,6 +14,12 @@ def _open_shelf(strata):
     return _shelf(strata)
 
 
+def _drag_onto_shelf(strata, entry, shelf):
+    # Without a window manager the shelf opens over the row icons, so start on the size column.
+    size = entry.find_all(role="label")[-1]
+    strata.pointer.drag_points(size.screen_bounds().center, shelf.screen_bounds().center)
+
+
 def _count(strata, count):
     return strata.wait(
         lambda: _shelf(strata).find(name=f"{count} item{'s' if count != 1 else ''}"),
@@ -34,21 +40,16 @@ def _action(strata, label):
 def test_collect_from_two_folders_and_copy_to_current_folder(strata):
     fixture = strata.fixture
     shelf = _open_shelf(strata)
-    strata.pointer.drag(strata.entry("todo.txt"), shelf)
+    _drag_onto_shelf(strata, strata.entry("todo.txt"), shelf)
     _count(strata, 1)
     assert fixture.path("todo.txt").read_text() == "todo\n"
 
     strata.open_directory("documents")
-    strata.pointer.drag(strata.entry("notes.txt", directory="documents"), shelf)
+    _drag_onto_shelf(strata, strata.entry("notes.txt", directory="documents"), shelf)
     _count(strata, 2)
     assert fixture.path("documents/notes.txt").exists()
 
-    strata.pointer.click(strata.window.find(role="button", name="New tab"))
-    strata.keyboard.press("ctrl+l")
-    strata.keyboard.press("ctrl+a")
-    strata.keyboard.type_text(str(fixture.path("archive")))
-    strata.keyboard.press("Return")
-    strata.wait_for_directory("archive")
+    strata.open_directory("archive")
     strata.pointer.click(_action(strata, "Copy here"))
     strata.wait(
         lambda: fixture.path("archive/todo.txt").exists()
@@ -77,9 +78,9 @@ def test_shelf_is_shared_across_tabs(strata):
 def test_drag_shelved_stack_into_folder(strata):
     fixture = strata.fixture
     shelf = _open_shelf(strata)
-    strata.pointer.drag(strata.entry("todo.txt"), shelf)
+    _drag_onto_shelf(strata, strata.entry("todo.txt"), shelf)
     _count(strata, 1)
-    preview = shelf.find(role="panel", name="Shelf preview")
+    preview = shelf.find(role="grouping", name="Shelf preview")
     assert preview is not None, shelf.dump()
     strata.pointer.drag(preview, strata.entry("archive"))
     strata.wait(lambda: fixture.path("archive/todo.txt").exists(), "shelved file to arrive")
