@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 use super::thumbnail::ThumbnailSlot;
 use crate::services::file_providers::{
-    self as protocol, Client, Decoration, MenuAction, OutcomeStatus, Registration, Request, Update,
+    self as protocol, Client, Decoration, Feedback, MenuAction, OutcomeStatus, Registration,
+    Request, Update,
 };
 use gtk::{gdk, gio, glib, prelude::*};
 use std::{
@@ -33,6 +34,7 @@ struct Provider {
     icons: HashMap<String, gdk::Texture>,
     id: String,
     name: String,
+    heading_icon: Option<gdk::Texture>,
     cache: HashMap<String, Answer<Decoration>>,
     menus: HashMap<MenuKey, Answer<Vec<MenuAction>>>,
     freshness: Freshness,
@@ -194,7 +196,7 @@ impl Hub {
     fn tick(&mut self) {
         if let Ok(registrations) = self.discovery.try_recv() {
             for r in registrations {
-                let icons = r
+                let icons: HashMap<String, gdk::Texture> = r
                     .icons
                     .iter()
                     .filter_map(|(k, v)| {
@@ -205,10 +207,17 @@ impl Hub {
                     .collect();
                 let id = r.manifest.id.clone();
                 let name = r.manifest.name.clone().unwrap_or_else(|| id.clone());
+                let heading_icon = r
+                    .manifest
+                    .icon
+                    .as_ref()
+                    .and_then(|icon| icons.get(icon))
+                    .cloned();
                 self.providers.push(Provider {
                     client: protocol::start(r),
                     id,
                     name,
+                    heading_icon,
                     icons,
                     cache: HashMap::new(),
                     menus: HashMap::new(),
@@ -324,44 +333,15 @@ impl Hub {
                                 );
                             }
                             Pending::Activate(i, owner) if i == index => {
-                                let message = if let Some(outcome) = &reply.outcome {
-                                    let mut status = match outcome.status {
-                                        OutcomeStatus::Accepted => "Accepted",
-                                        OutcomeStatus::Rejected => "Rejected",
-                                        OutcomeStatus::Partial => "Partially accepted",
-                                        OutcomeStatus::Unknown => "Outcome unknown",
+                                match reply.feedback() {
+                                    Feedback::None => (),
+                                    Feedback::Notice => {
+                                        notice(&owner, &provider.name, &reply.message);
                                     }
-                                    .to_owned();
-                                    if let Some((accepted, total)) =
-                                        outcome.accepted.zip(outcome.total)
-                                    {
-                                        if outcome.status == OutcomeStatus::Unknown {
-                                            status.push_str(&format!(
-                                                " (at least {accepted}/{total} accepted)"
-                                            ));
-                                        } else {
-                                            status.push_str(&format!(" ({accepted}/{total})"));
-                                        }
+                                    Feedback::Dialog | Feedback::Unrecognized => {
+                                        notify(&owner, &activation_summary(&provider.id, *reply));
                                     }
-                                    if let Some(job) = &outcome.job {
-                                        status.push_str(&format!("\nJob: {job}"));
-                                    }
-                                    format!("{status}\n\n{}", reply.message)
-                                } else {
-                                    reply.message
-                                };
-                                notify(
-                                    &owner,
-                                    &format!(
-                                        "{}: {}",
-                                        provider.id,
-                                        if message.is_empty() {
-                                            "The provider did not report an outcome."
-                                        } else {
-                                            &message
-                                        }
-                                    ),
-                                );
+                                }
                                 self.invalidate(index);
                             }
                             _ => (),
@@ -530,6 +510,60 @@ fn request(method: &str, paths: Vec<String>, background: bool) -> Request {
         context: None,
     }
 }
+fn activation_summary(provider: &str, reply: protocol::Reply) -> String {
+    let message = if let Some(outcome) = &reply.outcome {
+        let mut status = match outcome.status {
+            OutcomeStatus::Accepted => "Accepted",
+            OutcomeStatus::Rejected => "Rejected",
+            OutcomeStatus::Partial => "Partially accepted",
+            OutcomeStatus::Unknown => "Outcome unknown",
+        }
+        .to_owned();
+        if let Some((accepted, total)) = outcome.accepted.zip(outcome.total) {
+            if outcome.status == OutcomeStatus::Unknown {
+                status.push_str(&format!(" (at least {accepted}/{total} accepted)"));
+            } else {
+                status.push_str(&format!(" ({accepted}/{total})"));
+            }
+        }
+        if let Some(job) = &outcome.job {
+            status.push_str(&format!("\nJob: {job}"));
+        }
+        format!("{status}\n\n{}", reply.message)
+    } else {
+        reply.message
+    };
+    format!(
+        "{provider}: {}",
+        if message.is_empty() {
+            "The provider did not report an outcome."
+        } else {
+            &message
+        }
+    )
+}
+
+const NOTICE_DURATION: Duration = Duration::from_secs(4);
+
+/// Falls back to the dialog when the menu owner has no overlay to host a notice.
+fn notice(owner: &glib::WeakRef<gtk::Widget>, heading: &str, message: &str) {
+    let Some(widget) = owner.upgrade() else {
+        return;
+    };
+    let overlay = widget.clone().downcast::<gtk::Overlay>().ok().or_else(|| {
+        widget
+            .ancestor(gtk::Overlay::static_type())?
+            .downcast()
+            .ok()
+    });
+    match overlay {
+        Some(overlay) => {
+            super::notice::show_notice(&overlay, Some(heading), message, NOTICE_DURATION)
+        }
+        None => notify(owner, &format!("{heading}: {message}")),
+    }
+}
+
 fn notify(owner: &glib::WeakRef<gtk::Widget>, message: &str) {
     let Some(owner) = owner.upgrade() else {
         return;
@@ -568,6 +602,7 @@ pub(super) fn watch_menu(
         model,
         group,
         owner.clone(),
+        popover.clone(),
         key.clone(),
         alive.clone(),
         epoch,

@@ -1286,7 +1286,7 @@ fn send_to_toast_labels(overlay: &gtk::Overlay) -> Vec<String> {
         child = widget.next_sibling();
     }
     while let Some(widget) = stack.pop() {
-        if widget.has_css_class("send-to-success") {
+        if widget.has_css_class("overlay-notice") {
             let mut inner = vec![widget.clone()];
             while let Some(node) = inner.pop() {
                 if let Some(label) = node.downcast_ref::<gtk::Label>() {

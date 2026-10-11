@@ -1244,13 +1244,17 @@ colorchooser button.circular:disabled {
   padding: 10px 12px;
 }
 
-.send-to-success {
+.overlay-notice {
   background: @strata_surface;
   border: 1px solid alpha(@strata_border, 0.6);
   border-radius: 8px;
   box-shadow: 0 2px 10px alpha(@strata_bg, 0.4);
   margin: 12px;
   padding: 10px 12px;
+}
+
+.overlay-notice-heading {
+  font-weight: bold;
 }
 
 .form-message.warning {
@@ -4251,6 +4255,14 @@ textview > popover.menu > contents > scrolledwindow > viewport > stack {
 
 .actions-context-popover label.separator {
   padding: 4px 8px;
+}
+
+.actions-context-popover .provider-heading > image {
+  margin-left: 8px;
+}
+
+.actions-context-popover .provider-heading > label.separator {
+  padding-left: 6px;
 }
 
 .actions-context-popover separator,

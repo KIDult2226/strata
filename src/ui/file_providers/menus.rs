@@ -60,6 +60,7 @@ impl Node {
             reconcile(
                 context,
                 &model,
+                0,
                 &mut nodes,
                 &children
                     .iter()
@@ -126,12 +127,15 @@ impl Node {
     }
 }
 
+/// `offset` counts leading model items that are not nodes, such as a heading.
 fn reconcile(
     context: &Context,
     model: &gio::Menu,
+    offset: usize,
     nodes: &mut Vec<Node>,
     items: &MenuResult,
 ) -> bool {
+    let position = |index: usize| (index + offset) as i32;
     let mut changed = false;
     for index in (0..nodes.len()).rev() {
         if !items.iter().any(|(provider, data)| {
@@ -140,7 +144,7 @@ fn reconcile(
                 && nodes[index].children.is_some() == data.children.is_some()
         }) {
             nodes.remove(index).retire(context);
-            model.remove(index as i32);
+            model.remove(position(index));
             changed = true;
         }
     }
@@ -151,19 +155,19 @@ fn reconcile(
                 && node.children.is_some() == data.children.is_some()
         };
         if !nodes.get(index).is_some_and(matches) {
-            if let Some(position) = nodes
+            if let Some(existing) = nodes
                 .iter()
                 .skip(index)
                 .position(matches)
                 .map(|p| p + index)
             {
-                let node = nodes.remove(position);
-                model.remove(position as i32);
-                model.insert_item(index as i32, &node.item());
+                let node = nodes.remove(existing);
+                model.remove(position(existing));
+                model.insert_item(position(index), &node.item());
                 nodes.insert(index, node);
             } else {
                 let node = Node::new(context, *provider, data.clone());
-                model.insert_item(index as i32, &node.item());
+                model.insert_item(position(index), &node.item());
                 nodes.insert(index, node);
             }
             changed = true;
@@ -175,6 +179,7 @@ fn reconcile(
             changed |= reconcile(
                 context,
                 children_model,
+                0,
                 children,
                 &new_children
                     .iter()
@@ -189,15 +194,15 @@ fn reconcile(
         let presentation_changed = node.data.label != data.label || node.data.icon != data.icon;
         node.data = data.clone();
         if presentation_changed {
-            model.remove(index as i32);
-            model.insert_item(index as i32, &node.item());
+            model.remove(position(index));
+            model.insert_item(position(index), &node.item());
             changed = true;
         }
     }
     while nodes.len() > items.len() {
         let node = nodes.pop().expect("excess menu node");
         node.retire(context);
-        model.remove(nodes.len() as i32);
+        model.remove(position(nodes.len()));
         changed = true;
     }
     changed
@@ -206,6 +211,7 @@ fn reconcile(
 struct ProviderSection {
     provider: usize,
     model: gio::Menu,
+    heading: bool,
     nodes: Vec<Node>,
 }
 
@@ -219,6 +225,7 @@ impl ProviderSection {
 
 pub(super) struct Renderer {
     context: Context,
+    popover: glib::WeakRef<gtk::PopoverMenu>,
     model: gio::Menu,
     sections: Vec<ProviderSection>,
 }
@@ -228,6 +235,7 @@ impl Renderer {
         model: gio::Menu,
         group: gio::SimpleActionGroup,
         owner: glib::WeakRef<gtk::Widget>,
+        popover: glib::WeakRef<gtk::PopoverMenu>,
         key: MenuKey,
         alive: Rc<Cell<u64>>,
         epoch: u64,
@@ -240,6 +248,7 @@ impl Renderer {
                 alive,
                 epoch,
             },
+            popover,
             model,
             sections: Vec::new(),
         }
@@ -269,21 +278,72 @@ impl Renderer {
                     ProviderSection {
                         provider: *provider,
                         model: gio::Menu::new(),
+                        heading: false,
                         nodes: Vec::new(),
                     },
                 );
             }
             let section = &mut self.sections[index];
-            changed |= reconcile(&self.context, &section.model, &mut section.nodes, actions);
+            changed |= reconcile(
+                &self.context,
+                &section.model,
+                usize::from(section.heading),
+                &mut section.nodes,
+                actions,
+            );
             if new_section {
-                let name = with_hub(|hub| hub.providers[*provider].name.clone());
-                self.model
-                    .insert_section(index as i32, Some(&name), &section.model);
+                insert_section(&self.model, index, section, self.popover.upgrade());
                 changed = true;
             }
         }
         changed
     }
+}
+
+/// GTK section titles cannot hold an image, so a provider icon replaces the
+/// title with a custom heading row styled like one.
+fn insert_section(
+    model: &gio::Menu,
+    index: usize,
+    section: &mut ProviderSection,
+    popover: Option<gtk::PopoverMenu>,
+) {
+    let (id, name, icon) = with_hub(|hub| {
+        let provider = &hub.providers[section.provider];
+        (
+            provider.id.clone(),
+            provider.name.clone(),
+            provider.heading_icon.clone(),
+        )
+    });
+    if let (Some(icon), Some(popover)) = (icon, popover) {
+        let custom = format!("provider-heading-{id}");
+        let item = gio::MenuItem::new(None, None);
+        item.set_attribute_value("custom", Some(&custom.to_variant()));
+        section.model.insert_item(0, &item);
+        model.insert_section(index as i32, None, &section.model);
+        if popover.add_child(&heading(&icon, &name), &custom) {
+            section.heading = true;
+            return;
+        }
+        section.model.remove(0);
+        model.remove(index as i32);
+    }
+    model.insert_section(index as i32, Some(&name), &section.model);
+}
+
+fn heading(icon: &gtk::gdk::Texture, name: &str) -> gtk::Widget {
+    let row = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    row.add_css_class("provider-heading");
+    let image = gtk::Image::from_paintable(Some(icon));
+    image.set_pixel_size(14);
+    image.set_accessible_role(gtk::AccessibleRole::Presentation);
+    row.append(&image);
+    let label = gtk::Label::new(Some(name));
+    label.add_css_class("separator");
+    label.set_xalign(0.0);
+    row.append(&label);
+    row.upcast()
 }
 
 impl Drop for Renderer {

@@ -83,7 +83,7 @@ def provider_registration(test_environment, fixture_tree, request):
     script.write_text(PROGRAM)
     # Small PNG, bounded and loaded only from this trusted registration.
     (folder / "badge.png").write_bytes(base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAHUlEQVR4nGM0qnj2n4ECwESJ5lEDRg0YNWAwGQAAosYCrxCcv1sAAAAASUVORK5CYII="))
-    (folder / "provider.json").write_text(json.dumps({"version":1,"id":"example","name":"Example Cloud","command":[sys.executable,str(script),str(fixture_tree.root),str(state),str(folder/"record")],"icons":{"badge":"badge.png"}}))
+    (folder / "provider.json").write_text(json.dumps({"version":1,"id":"example","name":"Example Cloud","icon":"badge","command":[sys.executable,str(script),str(fixture_tree.root),str(state),str(folder/"record")],"icons":{"badge":"badge.png"}}))
     fixture_tree.path("local-only.txt").write_text("unrelated")
     return folder
 
