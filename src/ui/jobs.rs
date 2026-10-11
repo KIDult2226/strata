@@ -11,7 +11,10 @@ use gtk::{gio, glib, prelude::*};
 
 use crate::services::{JobId, JobService, JobSnapshot, JobStatus, ListenerGuard};
 
-use super::actions::action_icon;
+use super::{
+    actions::action_icon,
+    keys::{self, bindings::ESCAPE_ANY},
+};
 
 #[cfg(test)]
 mod tests;
@@ -316,8 +319,8 @@ impl JobsIndicator {
 
         let escape = gtk::EventControllerKey::new();
         let weak_popover = popover.downgrade();
-        escape.connect_key_pressed(move |_, key, _, _| {
-            if key == gtk::gdk::Key::Escape {
+        keys::on_press(&escape, move |_, press| {
+            if press.is(ESCAPE_ANY) {
                 if let Some(popover) = weak_popover.upgrade() {
                     popover.popdown();
                 }

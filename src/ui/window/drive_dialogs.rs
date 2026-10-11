@@ -14,6 +14,7 @@ use crate::{
             FormTextField, ModalLayout, ModalTone, ProgressSummary, form_check_button, form_label,
             keep_words_whole, modal_layout, progress_summary, properties_action,
         },
+        keys::{self, bindings::ESCAPE_ANY},
         missing_tools::{MissingTool, show_missing_tools},
         modal::{ModalHost, dismiss_modal_layer, modal_layer, remember_modal_focus},
     },
@@ -322,8 +323,8 @@ fn wire_modal_close(shell: &ModalShell) {
     shell.layout.close.connect_clicked(move |_| closed());
     let escaped = close.clone();
     let escape = gtk::EventControllerKey::new();
-    escape.connect_key_pressed(move |_, key, _, _| {
-        if key == gtk::gdk::Key::Escape {
+    keys::on_press(&escape, move |_, press| {
+        if press.is(ESCAPE_ANY) {
             escaped();
             glib::Propagation::Stop
         } else {
@@ -927,8 +928,8 @@ fn wire_modal_close_except_confirm(shell: &ModalShell) {
     shell.layout.close.connect_clicked(move |_| closed());
     let escaped = close.clone();
     let escape = gtk::EventControllerKey::new();
-    escape.connect_key_pressed(move |_, key, _, _| {
-        if key == gtk::gdk::Key::Escape {
+    keys::on_press(&escape, move |_, press| {
+        if press.is(ESCAPE_ANY) {
             escaped();
             glib::Propagation::Stop
         } else {

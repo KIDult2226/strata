@@ -4,6 +4,7 @@ use crate::ui::blur::BlurBin;
 use crate::ui::controls::{
     ModalTone, focus_button, message_dialog_description, message_dialog_layout,
 };
+use crate::ui::keys::{self, bindings::ESCAPE_ANY};
 use gtk::glib;
 use gtk::prelude::*;
 use std::cell::{Cell, RefCell};
@@ -768,8 +769,8 @@ fn show_message_dialog(
     let icon_dismiss = dismiss.clone();
     close_icon.connect_clicked(move |_| icon_dismiss());
     let escape = gtk::EventControllerKey::new();
-    escape.connect_key_pressed(move |_, key, _, _| {
-        if key == gtk::gdk::Key::Escape {
+    keys::on_press(&escape, move |_, press| {
+        if press.is(ESCAPE_ANY) {
             dismiss();
             glib::Propagation::Stop
         } else {
@@ -838,8 +839,8 @@ pub(super) fn show_delete_error_dialog(
     });
     let escape = gtk::EventControllerKey::new();
     let escape_dismiss = dismiss.clone();
-    escape.connect_key_pressed(move |_, key, _, _| {
-        if key == gtk::gdk::Key::Escape {
+    keys::on_press(&escape, move |_, press| {
+        if press.is(ESCAPE_ANY) {
             escape_dismiss();
             glib::Propagation::Stop
         } else {

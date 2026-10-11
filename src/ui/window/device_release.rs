@@ -16,6 +16,7 @@ use crate::{
     ui::{
         browser::{BrowserView, show_error_dialog},
         controls::{message_dialog_description, modal_layout},
+        keys::{self, bindings::ESCAPE_ANY},
         modal::{ModalHost, dismiss_modal_layer, modal_layer, remember_modal_focus},
     },
 };
@@ -694,8 +695,8 @@ pub(super) fn present_release_overlay(parent: &gtk::Widget, key: &ReleaseKey) {
     let hide_closed = hide.clone();
     layout.close.connect_clicked(move |_| hide_closed());
     let escape = gtk::EventControllerKey::new();
-    escape.connect_key_pressed(move |_, key, _, _| {
-        if key == gtk::gdk::Key::Escape {
+    keys::on_press(&escape, move |_, press| {
+        if press.is(ESCAPE_ANY) {
             hide();
             glib::Propagation::Stop
         } else {

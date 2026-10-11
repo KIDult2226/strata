@@ -8,6 +8,7 @@ use crate::{assets, services::package_manager::PackageManager};
 
 use super::{
     controls::{ModalTone, copyable_command, message_dialog_description, message_dialog_layout},
+    keys::{self, bindings::ESCAPE_ANY},
     modal::{ModalHost, dismiss_modal_layer, modal_layer, remember_modal_focus},
 };
 
@@ -83,8 +84,8 @@ pub(super) fn show_missing_tools(
     let clicked = close.clone();
     layout.close.connect_clicked(move |_| clicked());
     let escape = gtk::EventControllerKey::new();
-    escape.connect_key_pressed(move |_, key, _, _| {
-        if key == gtk::gdk::Key::Escape {
+    keys::on_press(&escape, move |_, press| {
+        if press.is(ESCAPE_ANY) {
             close();
             glib::Propagation::Stop
         } else {
