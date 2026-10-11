@@ -26,6 +26,8 @@ extend-ignore-re = [
   '"relase chanel"',
   # French caption exercised by the restart-to-apply regression.
   '"Redémarrer maintenant"',
+  # German F1 row exercised by the localized shortcut reference regression.
+  '"Ausgewählte Elemente kopieren / ausschneiden"',
   # Non-English values in the multilingual count and calendar catalogs.
   '(?m)^\s*"(?:fr|de|es|ja|pt-BR|ko|vi|it|ru)": ".*"',
   # Localized desktop-entry values.
