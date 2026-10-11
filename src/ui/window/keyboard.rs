@@ -38,8 +38,8 @@ use sidebar::{SidebarChord, activate_sidebar_focus, move_sidebar_focus, sidebar_
 // None tries the next Strata stage; Some(Proceed) gives the event to GTK instead.
 type KeyResult = Option<Propagation>;
 
-/// Window actions that run once the dispatcher yields, where GTK ran
-/// application accelerators. The flag marks those 10xer mode leaves unbound.
+/// Window actions that run once every other stage yields the key. The flag
+/// marks those 10xer mode leaves unbound.
 const WINDOW_ACTIONS: [(Binding, &str, bool); 5] = [
     (SEARCH, "search", false),
     (JUMP_TO_FOLDER, "jump-folder", true),
