@@ -7,6 +7,7 @@ use std::{
 };
 
 use crate::services::DocumentTableCellLayout;
+use crate::ui::keys::{self, bindings::COPY};
 use gtk::{gio, glib, prelude::*};
 
 mod selection;
@@ -359,9 +360,8 @@ impl TableState {
         let key = gtk::EventControllerKey::new();
         let state = self.clone();
         let weak_view = view.downgrade();
-        key.connect_key_pressed(move |_, key, _, modifiers| {
-            if modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK)
-                && matches!(key, gtk::gdk::Key::c | gtk::gdk::Key::C)
+        keys::on_press(&key, move |_, press| {
+            if press.is(COPY)
                 && let Some(view) = weak_view.upgrade()
             {
                 view.clipboard().set_text(&state.copy_text());

@@ -7,7 +7,7 @@ use std::{
     time::Duration,
 };
 
-use gtk::{gio, glib, prelude::*};
+use gtk::{gdk::ModifierType as Modifiers, gio, glib, prelude::*};
 use sourceview5::prelude::*;
 
 use crate::services::{
@@ -15,8 +15,13 @@ use crate::services::{
     DocumentTableCellLayout, DocumentUnit, DocumentUnitKind, has_web_scheme,
     normalize_preview_text,
 };
+use crate::ui::keys::{
+    self, KeyPress,
+    bindings::{COPY, DOWN, FIRST_ITEM, LAST_ITEM, LEFT, RIGHT, SELECT_ALL, UP},
+};
 
 mod selection;
+use selection::Motion;
 pub(super) use selection::match_ranges;
 
 #[derive(Clone, Copy)]
@@ -1582,16 +1587,11 @@ fn point_hits_class(list: &gtk::ListView, x: f64, y: f64, class: &str) -> bool {
 fn install_keyboard_selection(list: &gtk::ListView, state: Rc<VirtualPreviewState>) {
     let keys = gtk::EventControllerKey::new();
     let weak_list = list.downgrade();
-    keys.connect_key_pressed(move |_, key, _, modifiers| {
-        use gtk::gdk::ModifierType as Modifiers;
-        if modifiers.intersects(Modifiers::ALT_MASK | Modifiers::SUPER_MASK) {
-            return glib::Propagation::Proceed;
-        }
+    keys::on_press(&keys, move |_, press| {
         let Some(list) = weak_list.upgrade() else {
             return glib::Propagation::Proceed;
         };
-        let control = modifiers.contains(Modifiers::CONTROL_MASK);
-        if control && key == gtk::gdk::Key::a {
+        if press.is(SELECT_ALL) {
             let Some(last) = state.units.len().checked_sub(1) else {
                 return glib::Propagation::Stop;
             };
@@ -1605,25 +1605,43 @@ fn install_keyboard_selection(list: &gtk::ListView, state: Rc<VirtualPreviewStat
             update_all_bound_selection(&state);
             return glib::Propagation::Stop;
         }
-        if control && key == gtk::gdk::Key::c {
+        if press.is(COPY) {
             if let Some(text) = selection_text(&state) {
                 list.clipboard().set_text(&text);
             }
             return glib::Propagation::Stop;
         }
-        if let Some(selection) = selection::move_selection(
-            &state.units,
-            state.selection.get(),
-            key,
-            control,
-            modifiers.contains(Modifiers::SHIFT_MASK),
-        ) {
+        let held = press.modifiers();
+        if let Some(motion) = caret_motion(press)
+            && let Some(selection) = selection::move_selection(
+                &state.units,
+                state.selection.get(),
+                motion,
+                held.contains(Modifiers::CONTROL_MASK),
+                held.contains(Modifiers::SHIFT_MASK),
+            )
+        {
             state.select_and_reveal(selection);
             return glib::Propagation::Stop;
         }
         glib::Propagation::Proceed
     });
     list.add_controller(keys);
+}
+
+/// Ctrl moves by word or to the document's ends; Shift extends.
+fn caret_motion(press: &KeyPress) -> Option<Motion> {
+    const HELD: Modifiers = Modifiers::CONTROL_MASK.union(Modifiers::SHIFT_MASK);
+    [
+        (LEFT, Motion::Left),
+        (RIGHT, Motion::Right),
+        (UP, Motion::Up),
+        (DOWN, Motion::Down),
+        (FIRST_ITEM, Motion::Home),
+        (LAST_ITEM, Motion::End),
+    ]
+    .into_iter()
+    .find_map(|(binding, motion)| press.is(binding.ignoring(HELD)).then_some(motion))
 }
 
 fn start_autoscroll(

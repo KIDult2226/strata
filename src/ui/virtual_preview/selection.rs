@@ -1,8 +1,18 @@
 // SPDX-License-Identifier: MIT
 
-use gtk::{gdk::Key, prelude::*};
+use gtk::prelude::*;
 
 use super::{DocumentSelection, PreviewUnit, SelectionPoint};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Motion {
+    Left,
+    Right,
+    Up,
+    Down,
+    Home,
+    End,
+}
 
 fn text_buffer(unit: &PreviewUnit) -> gtk::TextBuffer {
     let buffer = gtk::TextBuffer::new(None);
@@ -66,7 +76,7 @@ pub(super) fn clicked_selection(
 pub(super) fn move_selection(
     units: &[PreviewUnit],
     selection: Option<DocumentSelection>,
-    key: Key,
+    motion: Motion,
     control: bool,
     extend: bool,
 ) -> Option<DocumentSelection> {
@@ -85,33 +95,27 @@ pub(super) fn move_selection(
         focus: beginning,
     });
     let point = previous.focus;
-    let forward = matches!(
-        key,
-        Key::Right | Key::KP_Right | Key::Down | Key::KP_Down | Key::End | Key::KP_End
-    );
-    let focus = if !extend
-        && !control
-        && !previous.is_empty()
-        && matches!(key, Key::Left | Key::KP_Left | Key::Right | Key::KP_Right)
-    {
+    let forward = matches!(motion, Motion::Right | Motion::Down | Motion::End);
+    let horizontal = matches!(motion, Motion::Left | Motion::Right);
+    let focus = if !extend && !control && !previous.is_empty() && horizontal {
         let (start, end) = previous.normalized();
         if forward { end } else { start }
-    } else if control && matches!(key, Key::Home | Key::KP_Home | Key::End | Key::KP_End) {
+    } else if control && matches!(motion, Motion::Home | Motion::End) {
         if forward { end } else { beginning }
     } else if control
-        && matches!(key, Key::Right | Key::KP_Right)
+        && motion == Motion::Right
         && units[point.unit].display_text().is_empty()
         && point.offset < units[point.unit].selection_len()
     {
         character_step(units, point, true)
-    } else if matches!(key, Key::Left | Key::KP_Left | Key::Right | Key::KP_Right) && !control {
+    } else if horizontal && !control {
         character_step(units, point, forward)
     } else {
         let unit = units.get(point.unit)?;
         let buffer = text_buffer(unit);
         let mut iter = buffer.iter_at_offset(point.offset.min(buffer.char_count() as usize) as i32);
-        match key {
-            Key::Left | Key::KP_Left => {
+        match motion {
+            Motion::Left => {
                 if !iter.backward_word_start() && point.offset == 0 {
                     let mut next = character_step(units, point, false);
                     if next.unit != point.unit {
@@ -122,14 +126,14 @@ pub(super) fn move_selection(
                                 focus: next,
                                 ..previous
                             }),
-                            key,
+                            motion,
                             control,
                             extend,
                         );
                     }
                 }
             }
-            Key::Right | Key::KP_Right => {
+            Motion::Right => {
                 if !iter.forward_word_end() && point.offset == unit.selection_len() {
                     let mut next = character_step(units, point, true);
                     if next.unit != point.unit {
@@ -140,20 +144,20 @@ pub(super) fn move_selection(
                                 focus: next,
                                 ..previous
                             }),
-                            key,
+                            motion,
                             control,
                             extend,
                         );
                     }
                 }
             }
-            Key::Home | Key::KP_Home => iter.set_line_offset(0),
-            Key::End | Key::KP_End => {
+            Motion::Home => iter.set_line_offset(0),
+            Motion::End => {
                 if !iter.ends_line() {
                     iter.forward_to_line_end();
                 }
             }
-            Key::Up | Key::KP_Up | Key::Down | Key::KP_Down => {
+            Motion::Up | Motion::Down => {
                 let column = iter.line_offset();
                 let first_line = iter.line() == 0;
                 if forward {
@@ -199,7 +203,6 @@ pub(super) fn move_selection(
                     iter.forward_char();
                 }
             }
-            _ => return None,
         }
         SelectionPoint {
             unit: point.unit,

@@ -1,6 +1,20 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
+use crate::ui::keys::{
+    self, Binding, SHORTCUT_MODIFIERS,
+    bindings::{COPY, DOWN, ESCAPE_ANY, FIRST_ITEM, LAST_ITEM, LEFT, RIGHT, SELECT_ALL, UP},
+};
+
+const CLEARS_SELECTION: [Binding; 7] = [
+    ESCAPE_ANY,
+    LEFT.ignoring(SHORTCUT_MODIFIERS),
+    RIGHT.ignoring(SHORTCUT_MODIFIERS),
+    UP.ignoring(SHORTCUT_MODIFIERS),
+    DOWN.ignoring(SHORTCUT_MODIFIERS),
+    FIRST_ITEM.ignoring(SHORTCUT_MODIFIERS),
+    LAST_ITEM.ignoring(SHORTCUT_MODIFIERS),
+];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Point {
@@ -382,26 +396,14 @@ impl Selection {
         key.set_propagation_phase(gtk::PropagationPhase::Capture);
         let state = self.clone();
         let weak_view = view.downgrade();
-        key.connect_key_pressed(move |_, key, _, modifiers| {
-            if modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK)
-                && matches!(key, gtk::gdk::Key::c | gtk::gdk::Key::C)
+        keys::on_press(&key, move |_, press| {
+            if press.is(COPY)
                 && let (Some(text), Some(view)) = (state.copy_text(), weak_view.upgrade())
             {
                 view.clipboard().set_text(&text);
                 return glib::Propagation::Stop;
             }
-            if matches!(
-                key,
-                gtk::gdk::Key::Escape
-                    | gtk::gdk::Key::Left
-                    | gtk::gdk::Key::Right
-                    | gtk::gdk::Key::Up
-                    | gtk::gdk::Key::Down
-                    | gtk::gdk::Key::Home
-                    | gtk::gdk::Key::End
-            ) || (modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK)
-                && matches!(key, gtk::gdk::Key::a | gtk::gdk::Key::A))
-            {
+            if press.is_any(&CLEARS_SELECTION) || press.is(SELECT_ALL) {
                 state.clear();
             }
             glib::Propagation::Proceed
