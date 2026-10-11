@@ -12,7 +12,7 @@ use crate::{
     services::NavigationHistory,
     ui::{
         browser::BrowserView,
-        keys::{self, KeyPress, SHORTCUT_MODIFIERS, bindings::*},
+        keys::{self, Binding, KeyPress, SHORTCUT_MODIFIERS, bindings::*},
         modal::is_closing_layer,
         preview::PreviewDrawer,
         shortcut_footer::ShortcutFooter,
@@ -37,6 +37,16 @@ use sidebar::{SidebarChord, activate_sidebar_focus, move_sidebar_focus, sidebar_
 
 // None tries the next Strata stage; Some(Proceed) gives the event to GTK instead.
 type KeyResult = Option<Propagation>;
+
+/// Window actions that run once the dispatcher yields, where GTK ran
+/// application accelerators. The flag marks those 10xer mode leaves unbound.
+const WINDOW_ACTIONS: [(Binding, &str, bool); 5] = [
+    (SEARCH, "search", false),
+    (JUMP_TO_FOLDER, "jump-folder", true),
+    (TERMINAL, "open-terminal", true),
+    (REFRESH, "refresh", false),
+    (ARROW_SCOPE, "toggle-arrow-scope", true),
+];
 
 pub(super) struct DispatcherParts {
     pub view: BrowserView,
@@ -81,7 +91,10 @@ pub(super) fn install_on(
         let Some(browser) = weak_browser.upgrade() else {
             return Propagation::Proceed;
         };
-        dispatcher.handle_key(&browser, press)
+        match dispatcher.handle_key(&browser, press) {
+            Propagation::Proceed => dispatcher.after_yield(press),
+            handled => handled,
+        }
     });
     window.add_controller(keys.clone());
 
@@ -121,6 +134,33 @@ pub(super) fn install_on(
     let controllers = vec![keys.upcast(), wheel.upcast()];
     release_controllers_on_close(window, root, &controllers);
     controllers
+}
+
+/// GTK's own text bindings miss a key that only the layout fallback reads as an
+/// editing shortcut, so the focused text field runs the matching action itself.
+pub(in crate::ui) fn edit_focused_text(window: &gtk::Window, press: &KeyPress) -> Propagation {
+    const EDITING: [(Binding, &str); 7] = [
+        (COPY, "clipboard.copy"),
+        (CUT, "clipboard.cut"),
+        (PASTE, "clipboard.paste"),
+        (SELECT_ALL, "selection.select-all"),
+        (UNDO, "text.undo"),
+        (REDO, "text.redo"),
+        (REDO_Y, "text.redo"),
+    ];
+    if !press.from_fallback() {
+        return Propagation::Proceed;
+    }
+    let focused = gtk::prelude::RootExt::focus(window)
+        .filter(|focused| focused.is::<gtk::Text>() || focused.is::<gtk::TextView>());
+    let edit = EDITING.iter().find(|(binding, _)| press.is(*binding));
+    let (Some(focused), Some((_, action))) = (focused, edit) else {
+        return Propagation::Proceed;
+    };
+    if let Err(error) = focused.activate_action(action, None) {
+        tracing::warn!(%error, action, "text field action unavailable");
+    }
+    Propagation::Stop
 }
 
 // Key controllers retain the dispatcher and its window; unrealize breaks the cycle.
@@ -716,8 +756,8 @@ impl Dispatcher {
             return Some(Propagation::Proceed);
         }
         if visible_modal_layer(&self.window).is_some() {
-            // A layer animating out has dropped focus; only window accelerators,
-            // which skip closing layers, may act until focus is restored.
+            // A layer animating out has dropped focus; only window actions, whose
+            // guard skips closing layers, may act until focus is restored.
             self.shortcuts.cancel_chord();
             return Some(Propagation::Proceed);
         }
@@ -758,6 +798,34 @@ impl Dispatcher {
             return Some(Propagation::Stop);
         }
         None
+    }
+
+    /// Runs where GTK ran its own shortcuts once the dispatcher yields: window
+    /// actions, then the editing keys of a focused text field.
+    fn after_yield(&self, press: &KeyPress) -> Propagation {
+        match self.window_action(press) {
+            Propagation::Proceed => edit_focused_text(&self.window, press),
+            handled => handled,
+        }
+    }
+
+    /// Like a GTK accelerator, an enabled action consumes its key even when the
+    /// action's guard then declines to run.
+    fn window_action(&self, press: &KeyPress) -> Propagation {
+        let Some((_, name, unbound_in_tenxer)) = WINDOW_ACTIONS
+            .iter()
+            .find(|(binding, _, _)| press.is(*binding))
+        else {
+            return Propagation::Proceed;
+        };
+        let bound = !(*unbound_in_tenxer && self.type_to_search.preferences.tenxer_mode());
+        match self.window.downcast_ref::<gtk::ApplicationWindow>() {
+            Some(window) if bound && window.is_sensitive() && window.is_action_enabled(name) => {
+                gtk::gio::prelude::ActionGroupExt::activate_action(window, name, None);
+                Propagation::Stop
+            }
+            _ => Propagation::Proceed,
+        }
     }
 
     /// Shortcut-reference keys run before the chord consumer. A visible prompt

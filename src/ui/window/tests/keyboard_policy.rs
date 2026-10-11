@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+use std::{cell::RefCell, rc::Rc};
+
 use gtk::{
     gdk::{Key, ModifierType},
     prelude::*,
@@ -324,65 +326,74 @@ fn refresh_shortcut_keeps_f5_and_releases_control_r() {
     assert!(press(Key::r, CONTROL).is_any(&[RENAME, RENAME_R]));
 }
 
+/// Each window action with the press that runs it.
+const WINDOW_SHORTCUTS: [(Key, ModifierType, &str); 5] = [
+    (Key::k, CONTROL, "search"),
+    (Key::K, CONTROL.union(SHIFT), "jump-folder"),
+    (Key::t, CONTROL.union(ALT), "open-terminal"),
+    (Key::F5, NONE, "refresh"),
+    (Key::backslash, CONTROL, "toggle-arrow-scope"),
+];
+
 #[test]
-fn default_accels_never_bind_one_chord_twice() {
+fn window_actions_run_once_the_dispatcher_yields_and_claim_no_other_key() {
     gtk_test(
-        "ui::window::tests::keyboard_policy::default_accels_never_bind_one_chord_twice",
+        "ui::window::tests::keyboard_policy::window_actions_run_once_the_dispatcher_yields_and_claim_no_other_key",
         || {
-            let mut seen = std::collections::HashMap::new();
-            for (action, accels) in DEFAULT_ACCELS {
-                for accel in *accels {
-                    let chord = gtk::accelerator_parse(*accel).expect("valid default accelerator");
-                    assert!(
-                        !press(chord.0, chord.1).is_any(&[RENAME, RENAME_R]),
-                        "{action} must not claim a rename shortcut"
-                    );
-                    assert!(
-                        seen.insert(chord, *action).is_none(),
-                        "{accel} is bound to more than one action"
-                    );
-                }
+            PreferenceManager::shared().set_tenxer_mode(false);
+            let (window, content) = policy_window();
+            let runs = record_window_actions(&window);
+            focus_location(&content);
+            for (key, modifiers, action) in WINDOW_SHORTCUTS {
+                assert!(dispatch(&window, key, modifiers), "{action}");
+                assert_eq!(runs.take(), [action]);
             }
-            let refresh = DEFAULT_ACCELS
-                .iter()
-                .find(|(action, _)| *action == "win.refresh")
-                .expect("refresh accels")
-                .1;
-            assert_eq!(refresh, &["F5"]);
+            // F2 and Ctrl+R rename; the window's F5 is exact, as GTK's accelerator was.
+            for (key, modifiers) in [
+                (Key::F2, NONE),
+                (Key::r, CONTROL),
+                (Key::F5, SHIFT),
+                (Key::k, CONTROL | ALT),
+            ] {
+                dispatch(&window, key, modifiers);
+                assert!(runs.take().is_empty(), "{key:?} ran a window action");
+            }
+            window.destroy();
         },
     );
 }
 
 #[test]
-fn tenxer_accelerators_follow_the_saved_mode_across_windows() {
+fn tenxer_window_actions_follow_the_saved_mode_across_windows() {
     gtk_test(
-        "ui::window::tests::keyboard_policy::tenxer_accelerators_follow_the_saved_mode_across_windows",
+        "ui::window::tests::keyboard_policy::tenxer_window_actions_follow_the_saved_mode_across_windows",
         || {
             let preferences = PreferenceManager::shared();
             preferences.set_tenxer_mode(false);
-            let first = policy_window();
-            assert_accelerators(&first, false);
+            let (first, first_content) = policy_window();
+            let first_runs = record_window_actions(&first);
+            focus_location(&first_content);
+            assert_window_actions(&first, &first_runs, false);
             preferences.set_tenxer_mode(true);
-            assert_accelerators(&first, true);
-            let enabled = accel_snapshot(&first);
-            let second = policy_window();
-            assert_eq!(accel_snapshot(&second), enabled);
-            preferences.set_tenxer_mode(true);
-            assert_eq!(accel_snapshot(&first), enabled);
+            assert_window_actions(&first, &first_runs, true);
+            let (second, second_content) = policy_window();
+            let second_runs = record_window_actions(&second);
+            focus_location(&second_content);
+            assert_window_actions(&second, &second_runs, true);
             first.destroy();
             settle_policy();
-            assert_eq!(accel_snapshot(&second), enabled);
+            assert_window_actions(&second, &second_runs, true);
             preferences.set_tenxer_mode(false);
-            assert_accelerators(&second, false);
-            let restored = accel_snapshot(&second);
-            preferences.set_tenxer_mode(false);
-            assert_eq!(accel_snapshot(&second), restored);
+            assert_window_actions(&second, &second_runs, false);
             second.destroy();
         },
     );
 }
 
-fn policy_window() -> gtk::ApplicationWindow {
+fn policy_window() -> (
+    gtk::ApplicationWindow,
+    super::super::composition::WindowContent,
+) {
     let preferences = PreferenceManager::shared();
     let application = gtk::gio::Application::default()
         .and_downcast::<gtk::Application>()
@@ -402,51 +413,59 @@ fn policy_window() -> gtk::ApplicationWindow {
     let content = super::super::composition::WindowContent::new(&window, &preferences);
     content.bind(&window, &preferences);
     window.present();
-    window
+    (window, content)
 }
 
-fn assert_accelerators(window: &gtk::ApplicationWindow, tenxer: bool) {
-    let application = window.application().expect("application");
-    for (action, expected) in DEFAULT_ACCELS {
-        let installed = application.accels_for_action(action);
-        let suppressed = tenxer
-            && matches!(
-                *action,
-                "win.jump-folder" | "win.open-terminal" | "win.toggle-arrow-scope"
-            );
-        if suppressed {
-            assert!(
-                installed.is_empty(),
-                "{action} stays bound while 10xer is on: {installed:?}"
-            );
-            continue;
-        }
-        assert_eq!(installed.len(), expected.len(), "{action}");
-        for (actual, &expected) in installed.iter().zip(*expected) {
-            assert_eq!(
-                gtk::accelerator_parse(actual).expect("installed accelerator"),
-                gtk::accelerator_parse(expected).expect("default accelerator"),
-                "{action}"
-            );
-        }
+/// Replaces the window actions with ones that only record each run.
+fn record_window_actions(window: &gtk::ApplicationWindow) -> Rc<RefCell<Vec<&'static str>>> {
+    let runs = Rc::new(RefCell::new(Vec::new()));
+    for (_, _, name) in WINDOW_SHORTCUTS {
+        let action = gtk::gio::SimpleAction::new(name, None);
+        let runs = runs.clone();
+        action.connect_activate(move |_, _| runs.borrow_mut().push(name));
+        window.add_action(&action);
+    }
+    runs
+}
+
+/// The location field yields every key the dispatcher does not own.
+fn focus_location(content: &super::super::composition::WindowContent) {
+    content.browser.begin_location_edit();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while !content.browser.location_has_focus() {
+        assert!(std::time::Instant::now() < deadline, "location focus");
+        gtk::glib::MainContext::default().iteration(false);
     }
 }
 
-fn accel_snapshot(window: &gtk::ApplicationWindow) -> Vec<(String, Vec<String>)> {
-    let application = window.application().expect("application");
-    DEFAULT_ACCELS
-        .iter()
-        .map(|(action, _)| {
-            (
-                (*action).to_owned(),
-                application
-                    .accels_for_action(action)
-                    .iter()
-                    .map(|accel| accel.to_string())
-                    .collect(),
-            )
+fn dispatch(window: &gtk::ApplicationWindow, key: Key, modifiers: ModifierType) -> bool {
+    let controllers = window.observe_controllers();
+    (0..controllers.n_items())
+        .filter_map(|index| {
+            controllers
+                .item(index)
+                .and_downcast::<gtk::EventControllerKey>()
         })
-        .collect()
+        .find(|keys| keys.propagation_phase() == gtk::PropagationPhase::Capture)
+        .expect("key dispatcher")
+        .emit_by_name::<bool>("key-pressed", &[&key, &0u32, &modifiers])
+}
+
+fn assert_window_actions(
+    window: &gtk::ApplicationWindow,
+    runs: &RefCell<Vec<&'static str>>,
+    tenxer: bool,
+) {
+    for (key, modifiers, action) in WINDOW_SHORTCUTS {
+        let bound = !tenxer || matches!(action, "search" | "refresh");
+        assert_eq!(
+            dispatch(window, key, modifiers),
+            bound,
+            "{action}, 10xer={tenxer}"
+        );
+        let expected: &[&str] = if bound { &[action] } else { &[] };
+        assert_eq!(runs.take(), expected, "{action}, 10xer={tenxer}");
+    }
 }
 
 fn settle_policy() {

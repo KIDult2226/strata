@@ -8,7 +8,7 @@ mod preferences;
 use crate::test_support::gtk_test;
 
 use super::{
-    BrowserMode, DEFAULT_ACCELS, MouseHistoryAction, SinglePaneArrow, TypeToSearchQuery,
-    browser_mode_for_digit, is_browser_navigation_key, mouse_history_action,
-    sidebar_focus_direction, single_pane_arrow_action, type_to_search_query, vim_focus_direction,
+    BrowserMode, MouseHistoryAction, SinglePaneArrow, TypeToSearchQuery, browser_mode_for_digit,
+    is_browser_navigation_key, mouse_history_action, sidebar_focus_direction,
+    single_pane_arrow_action, type_to_search_query, vim_focus_direction,
 };

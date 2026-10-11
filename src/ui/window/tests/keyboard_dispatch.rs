@@ -1576,6 +1576,43 @@ fn tenxer_entries_menus_and_reference_keep_their_keys() {
 }
 
 #[test]
+fn layout_fallback_editing_keys_run_the_focused_text_fields_own_actions() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::layout_fallback_editing_keys_run_the_focused_text_fields_own_actions",
+        || {
+            let fixture = KeyboardFixture::new();
+            let entry = gtk::Entry::new();
+            entry.set_text("draft");
+            fixture.overlay.add_overlay(&entry);
+            entry.grab_focus();
+            wait_until(|| {
+                gtk::prelude::RootExt::focus(&fixture.window)
+                    .is_some_and(|focus| focus.is_ancestor(&entry))
+            });
+            // A Russian-only keymap types Cyrillic on the US A and C keys.
+            let press = |key: Key, keycode: u32| {
+                fixture.keys.emit_by_name::<bool>(
+                    "key-pressed",
+                    &[&key, &keycode, &ModifierType::CONTROL_MASK],
+                )
+            };
+            assert!(!press(Key::c, 0), "GTK's own Ctrl+C handles ASCII");
+            assert!(press(Key::Cyrillic_ef, 38));
+            assert_eq!(entry.selection_bounds(), Some((0, 5)));
+            assert!(press(Key::Cyrillic_es, 54));
+            let copied = fixture
+                .window
+                .clipboard()
+                .content()
+                .and_then(|content| content.value(glib::Type::STRING).ok())
+                .and_then(|value| value.get::<String>().ok());
+            assert_eq!(copied.as_deref(), Some("draft"));
+            assert_eq!(fixture.selected(), [0]);
+        },
+    );
+}
+
+#[test]
 fn page_keys_extend_shift_selection_or_a_tenxer_range() {
     crate::test_support::gtk_test(
         "ui::window::tests::keyboard_dispatch::page_keys_extend_shift_selection_or_a_tenxer_range",

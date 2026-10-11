@@ -639,6 +639,11 @@ fn window_accelerator_actions_yield_to_modals_and_inline_edits() {
             wait_until(|| focus_is_in(&owned));
             let before = effects();
             for accelerator in WindowAccelerator::ALL {
+                let (key, modifiers) = accelerator.shortcut();
+                assert!(
+                    window_key_claimed(&fixture.window, key, modifiers),
+                    "{owner:?}: {accelerator:?} reached the owner"
+                );
                 activate(accelerator);
                 pump(150);
                 assert_eq!(effects(), before, "{owner:?}: {accelerator:?} ran");
@@ -689,12 +694,11 @@ fn window_accelerator_actions_yield_to_modals_and_inline_edits() {
         fixture.content.overlay().add_overlay(&closing);
         for accelerator in WindowAccelerator::ALL {
             let (key, modifiers) = accelerator.shortcut();
-            assert!(
-                !window_key_claimed(&fixture.window, key, modifiers),
-                "{accelerator:?} was swallowed by the closing dialog"
-            );
             let before = effects();
-            activate(accelerator);
+            assert!(
+                window_key_claimed(&fixture.window, key, modifiers),
+                "{accelerator:?} was not dispatched past the closing dialog"
+            );
             wait_until(|| accelerator.ran(&before, &effects()));
             if accelerator.toggles() {
                 activate(accelerator);

@@ -209,9 +209,9 @@ impl WindowContent {
 }
 
 /// Adds a `win.<name>` action that does nothing while a modal layer other than
-/// `own_layer` is on top or an inline edit owns the listing. GTK runs window
-/// accelerators after the key dispatcher has yielded to those owners, so the check
-/// lives in the action rather than in the dispatcher.
+/// `own_layer` is on top or an inline edit owns the listing. The key dispatcher
+/// runs window actions after yielding to those owners, so the check lives in the
+/// action rather than in the dispatcher.
 fn add_guarded_window_action(
     window: &gtk::ApplicationWindow,
     actions: &gio::SimpleActionGroup,
@@ -263,16 +263,4 @@ fn install_browser_actions(
             toggle_preferences.set_arrow_navigation_scoped(next);
         },
     );
-    // The set lives on the application, so it follows the saved mode rather
-    // than whichever window was constructed or destroyed last.
-    if let Some(application) = window.application() {
-        let application = application.clone();
-        preferences.bind_preference(
-            &browser.widget(),
-            PreferenceManager::tenxer_mode,
-            move |_window, enabled| {
-                super::install_mode_accelerators(&application, enabled);
-            },
-        );
-    }
 }

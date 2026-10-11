@@ -24,7 +24,7 @@ use ashpd::{
     PortalError, WindowIdentifierType,
     desktop::file_chooser::{Choice, FileFilter, SelectedFiles},
 };
-use gtk::{gio, glib, prelude::*};
+use gtk::{gdk::ModifierType, gio, glib, prelude::*};
 
 use crate::{
     adapters::{LocalFileSource, LocalOperationProvider, LocalPreviewProvider},
@@ -55,15 +55,14 @@ use super::{
     top_bar_navigation::TopBarNavigation,
     window::{
         ChooserKeys, ChooserPolicy, MIN_SIDEBAR_WIDTH, SIDEBAR_WIDTH, SidebarView,
-        build_appearance_menu, build_sidebar, home_directory, install_modal_focus_trap,
-        vim_focus_direction, visible_modal_layer,
+        build_appearance_menu, build_sidebar, edit_focused_text, home_directory,
+        install_modal_focus_trap, vim_focus_direction, visible_modal_layer,
     },
 };
 use super::{
     focus_navigation::{arrow_direction, plain_tab_direction},
     keys::{self, KeyPress, SHORTCUT_MODIFIERS, bindings::*},
 };
-use gtk::gdk::ModifierType;
 
 /// Shift and Super ride along with arrows and keys that move focus or the cursor.
 const FOCUS_MODIFIERS: ModifierType = ModifierType::SHIFT_MASK.union(ModifierType::SUPER_MASK);
@@ -2822,8 +2821,13 @@ fn install_shortcuts(
         glib::Propagation::Stop
     };
     keys::on_press(&keys, move |_, press| {
-        weak.upgrade()
-            .map_or(glib::Propagation::Proceed, |state| handle(&state, press))
+        let Some(state) = weak.upgrade() else {
+            return glib::Propagation::Proceed;
+        };
+        match handle(&state, press) {
+            glib::Propagation::Proceed => edit_focused_text(&state.window, press),
+            handled => handled,
+        }
     });
     window.add_controller(keys.clone());
     let keys = keys.downgrade();

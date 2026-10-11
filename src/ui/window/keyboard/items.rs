@@ -758,7 +758,6 @@ impl Dispatcher {
 /// Paging and jumping keys do nothing while a listing search shows its hits.
 const SWALLOWED_ON_HITS: [Binding; 4] = [FIRST_ITEM, LAST_ITEM, PAGE_UP, PAGE_DOWN];
 
-/// Native Shift selection keys, which 10xer swallows so v and V own ranges.
 const EXTEND_KEYS: [Binding; 6] = [
     EXTEND_UP,
     EXTEND_DOWN,

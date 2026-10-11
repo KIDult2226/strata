@@ -634,6 +634,17 @@ fn save_name_and_location_do_not_dispatch_listing_shortcuts() {
                     assert!(!chooser.state.view.filter_has_focus());
                     assert!(chooser.open_request());
                 }
+                // Ctrl+A on a Russian-only keymap reaches the field's own select-all.
+                entry.select_region(0, 0);
+                assert!(chooser.keys.emit_by_name::<bool>(
+                    "key-pressed",
+                    &[&Key::Cyrillic_ef, &38u32, &ModifierType::CONTROL_MASK],
+                ));
+                assert_eq!(
+                    entry.selection_bounds(),
+                    Some((0, entry.text().chars().count() as i32))
+                );
+                assert!(has_focus());
                 assert!(chooser.press(Key::Escape));
                 assert!(chooser.state.view.item_view_has_focus());
             }

@@ -63,7 +63,7 @@ mod volume_password;
 pub(super) use devices::{
     RemovableDestination, removable_destinations, resolve_removable_destination,
 };
-pub(in crate::ui) use keyboard::{ChooserKeys, ChooserPolicy};
+pub(in crate::ui) use keyboard::{ChooserKeys, ChooserPolicy, edit_focused_text};
 
 pub use open_argument::present_open;
 pub use unlock_argument::{UnlockTarget, present_unlock};
@@ -501,31 +501,6 @@ pub(super) fn type_to_search_query(press: &KeyPress) -> Option<TypeToSearchQuery
         return Some(TypeToSearchQuery::Empty);
     }
     press.text().map(TypeToSearchQuery::Character)
-}
-
-const DEFAULT_ACCELS: &[(&str, &[&str])] = &[
-    ("win.search", &["<Control>k"]),
-    ("win.jump-folder", &["<Control><Shift>k"]),
-    ("win.open-terminal", &["<Primary><Alt>t"]),
-    ("win.refresh", &["F5"]),
-    ("win.toggle-arrow-scope", &["<Primary>backslash"]),
-];
-
-const TENXER_SUPPRESSED_ACCELS: &[&str] = &[
-    "win.jump-folder",
-    "win.open-terminal",
-    "win.toggle-arrow-scope",
-];
-
-pub(super) fn install_mode_accelerators(application: &gtk::Application, tenxer: bool) {
-    for (action, accels) in DEFAULT_ACCELS {
-        let accels = if tenxer && TENXER_SUPPRESSED_ACCELS.contains(action) {
-            &[][..]
-        } else {
-            *accels
-        };
-        application.set_accels_for_action(action, accels);
-    }
 }
 
 /// Arrows held with any of `tolerated`, then exact **h j k l**.
