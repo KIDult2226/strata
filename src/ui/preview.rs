@@ -64,6 +64,23 @@ const PDF_MIN_ZOOM: f64 = 1.0;
 const PDF_MAX_ZOOM: f64 = 4.0;
 const MEDIA_PLUGIN_INSTALL_COMMAND: &str =
     "sudo pacman -S --needed gst-plugins-base gst-plugins-good";
+const MEDIA_SEEK_STEP_US: i64 = 5_000_000;
+const MEDIA_SEEK_PAGE_US: i64 = 30_000_000;
+const MEDIA_VOLUME_STEP: f64 = 0.1;
+const MEDIA_VOLUME_PAGE: f64 = 0.2;
+
+/// Seeking exactly to the duration would end the stream, so media keys and
+/// sliders stop on the last frame.
+fn media_last_frame(duration: i64) -> i64 {
+    let duration = duration.max(0) as u64;
+    crate::media::timestamp(crate::media::seek_tick(duration, duration)) as i64
+}
+
+/// Repeated float steps would stop just short of zero and never mute, so
+/// stepped volumes land on the step grid.
+fn snapped_volume(volume: f64) -> f64 {
+    ((volume / MEDIA_VOLUME_STEP).round() * MEDIA_VOLUME_STEP).clamp(0.0, 1.0)
+}
 
 pub(crate) fn preview_target(entry: Option<FileEntry>) -> Option<FileEntry> {
     entry.filter(entry_supports_quick_preview)
@@ -215,7 +232,10 @@ struct PreviewState {
     claim_on_resume: Cell<bool>,
 }
 
-pub(in crate::ui) use keyboard::{ArchiveMove, DocumentScroll, MediaCommand, PreviewSurface};
+use keyboard::MediaSeek;
+pub(in crate::ui) use keyboard::{
+    ArchiveMove, DocumentScroll, MediaCommand, PreviewSurface, media_key_command,
+};
 
 #[cfg(test)]
 mod tests;
@@ -678,6 +698,11 @@ impl PreviewDrawer {
         self.state.slot.clone().upcast()
     }
 
+    /// Drawn only while the preview shows content or a placeholder.
+    pub(in crate::ui) fn pane_widget(&self) -> gtk::Widget {
+        self.state.pane.clone().upcast()
+    }
+
     pub fn is_open(&self) -> bool {
         self.state.revealer.reveals_child()
     }
@@ -689,8 +714,14 @@ impl PreviewDrawer {
     pub(in crate::ui) fn handle_video_key(&self, press: &KeyPress) -> bool {
         let command = [
             (MEDIA_PLAY_PAUSE, MediaCommand::PlayPause),
-            (MEDIA_SEEK_BACK, MediaCommand::SeekBack),
-            (MEDIA_SEEK_FORWARD, MediaCommand::SeekForward),
+            (
+                MEDIA_SEEK_BACK,
+                MediaCommand::Seek(MediaSeek::By(-MEDIA_SEEK_STEP_US)),
+            ),
+            (
+                MEDIA_SEEK_FORWARD,
+                MediaCommand::Seek(MediaSeek::By(MEDIA_SEEK_STEP_US)),
+            ),
             (MEDIA_VOLUME_UP, MediaCommand::VolumeUp),
             (MEDIA_VOLUME_DOWN, MediaCommand::VolumeDown),
             (MEDIA_MUTE, MediaCommand::Mute),
@@ -772,31 +803,16 @@ impl PreviewState {
         if let Some(audio) = self.audio.borrow().as_ref() {
             audio.view.end_ease_in();
         }
-        let preferences = super::preferences::PreferenceManager::shared();
         if self.media_volume_slider.borrow().is_some() {
-            match command {
-                MediaCommand::VolumeUp | MediaCommand::VolumeDown => {
-                    let delta = if command == MediaCommand::VolumeUp {
-                        0.1
-                    } else {
-                        -0.1
-                    };
-                    let current = if preferences.preview_muted() {
-                        0.0
-                    } else {
-                        preferences.preview_volume()
-                    };
-                    let volume = (current + delta).clamp(0.0, 1.0);
-                    preferences.set_preview_audio(volume, volume == 0.0);
-                    return true;
-                }
-                MediaCommand::Mute => {
-                    if let Some(toggle) = self.media_toggle_mute.borrow().as_ref() {
-                        toggle();
-                        return true;
-                    }
-                }
-                _ => {}
+            if let Some(delta) = command.volume_delta() {
+                keyboard::step_preview_volume(delta);
+                return true;
+            }
+            if command == MediaCommand::Mute
+                && let Some(toggle) = self.media_toggle_mute.borrow().as_ref()
+            {
+                toggle();
+                return true;
             }
         }
         let Some(media) = self.media.borrow().clone() else {
@@ -811,14 +827,8 @@ impl PreviewState {
                 }
                 true
             }
-            MediaCommand::SeekBack | MediaCommand::SeekForward if media.is_seekable() => {
-                let delta: i64 = if command == MediaCommand::SeekForward {
-                    5_000_000
-                } else {
-                    -5_000_000
-                };
-                let target = (media.timestamp() + delta).max(0);
-                media.seek(target);
+            MediaCommand::Seek(seek) if media.is_seekable() => {
+                media.seek(seek.target(media.timestamp(), media.duration()));
                 true
             }
             _ => false,
@@ -1752,7 +1762,13 @@ impl PreviewState {
                 state.navigate_archive(depth);
             }
         });
-        let browser = archive::ArchiveBrowser::new(tree, navigate);
+        let weak = Rc::downgrade(self);
+        let open = Rc::new(move |index: usize| {
+            if let Some(state) = weak.upgrade() {
+                state.open_archive_row(index as u32);
+            }
+        });
+        let browser = archive::ArchiveBrowser::new(tree, navigate, open);
         if !focus_tree
             && !self.content.has_focus()
             && self
@@ -1767,8 +1783,17 @@ impl PreviewState {
         let list = browser.list().clone();
         self.content.append(browser.root());
         let weak = Rc::downgrade(self);
+        // GTK activates on a double-click's second press; the first release already opened it.
         list.connect_activate(move |_, position| {
-            if let Some(state) = weak.upgrade() {
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            let pointer_pending = state
+                .archive_browser
+                .borrow()
+                .as_ref()
+                .is_some_and(archive::ArchiveBrowser::pointer_activation_pending);
+            if !pointer_pending {
                 state.open_archive_row(position);
             }
         });
@@ -2594,6 +2619,7 @@ impl PreviewState {
             .build();
         seek.add_css_class("preview-media-seek");
         seek.set_range(0.0, 0.0);
+        seek.set_increments(MEDIA_SEEK_STEP_US as f64, MEDIA_SEEK_PAGE_US as f64);
         seek.set_sensitive(false);
 
         let weak_media = media.downgrade();
@@ -2651,6 +2677,21 @@ impl PreviewState {
             }
         });
         seek.add_controller(drag);
+        // A drag seeks once on release; keys, paging and the wheel seek now,
+        // and the knob follows the stream's position.
+        let media = media.clone();
+        seek.connect_change_value(move |_, scroll, value| {
+            if (scroll == gtk::ScrollType::Jump && seeking.get()) || !media.is_seekable() {
+                return glib::Propagation::Proceed;
+            }
+            let target = (value as i64).clamp(0, media_last_frame(media.duration()));
+            // Touchpad scrolling sends tiny jumps; one within the current frame
+            // would only restart the decoder.
+            if (target - media.timestamp()).abs() >= crate::media::timestamp(1) as i64 {
+                media.seek(target);
+            }
+            glib::Propagation::Stop
+        });
     }
 
     fn adopt_volume_controls(&self, volume: &VolumeControls) {
@@ -3140,6 +3181,7 @@ impl VolumeControls {
             .build();
         slider.add_css_class("preview-media-volume");
         slider.set_range(0.0, 1.0);
+        slider.set_increments(MEDIA_VOLUME_STEP, MEDIA_VOLUME_PAGE);
         slider.set_value(if muted {
             0.0
         } else {
@@ -3187,6 +3229,17 @@ impl VolumeControls {
             toggle_for_click();
         });
 
+        // Keys and trough clicks step on the grid; a drag stays free.
+        slider.connect_change_value(|scale, scroll, value| {
+            if matches!(
+                scroll,
+                gtk::ScrollType::Jump | gtk::ScrollType::Start | gtk::ScrollType::End
+            ) {
+                return glib::Propagation::Proceed;
+            }
+            scale.set_value(snapped_volume(value));
+            glib::Propagation::Stop
+        });
         let preferences = preferences.clone();
         slider.connect_value_changed(move |scale| {
             if !updating_slider.get() {
@@ -4087,6 +4140,7 @@ fn install_preview_drag(widget: &impl IsA<gtk::Widget>, state: &Rc<PreviewState>
     });
     let weak = Rc::downgrade(state);
     drag.connect_drag_end(move |_, _, _| {
+        super::browser::clear_active_drag();
         if let Some(state) = weak.upgrade() {
             state.content.remove_css_class("dragging");
             super::browser::slide_out(&state.content);

@@ -9,9 +9,10 @@ use crate::ui::{
     browser::{
         ViewState,
         clipboard::{
-            ClipboardMark, PreparedFileDrop, clipboard_mark, drag_actions_for_modifiers,
-            drag_preview_icon, file_drag_content, file_drag_hover_target, file_drop_action,
-            file_drop_commit, locations_from_file_list_value, prepare_file_drop_target,
+            ClipboardMark, PreparedFileDrop, clear_active_drag, clipboard_mark,
+            drag_actions_for_modifiers, drag_preview_icon, file_drag_content,
+            file_drag_hover_target, file_drop_action, file_drop_commit,
+            locations_from_file_list_value, prepare_file_drop_target,
         },
         collection::{ViewMap, activate_recursive_search_result},
         entry::{
@@ -131,6 +132,20 @@ pub(super) fn column_rows(
         content.append(&path);
         middle.set_child(Some(&content));
         middle.add_overlay(&size);
+        let weak_rename = rename.downgrade();
+        crate::ui::preferences::PreferenceManager::shared().bind_preference(
+            &size,
+            crate::ui::preferences::PreferenceManager::columns_show_sizes,
+            move |widget, enabled| {
+                let Some(label) = widget.downcast_ref::<gtk::Label>() else {
+                    return;
+                };
+                let editing = weak_rename
+                    .upgrade()
+                    .is_some_and(|entry| entry.upcast_ref::<gtk::Widget>().is_visible());
+                label.set_visible(enabled && !editing && !label.label().is_empty());
+            },
+        );
         let chevron = crate::assets::primary_icon(crate::assets::icons::CHEVRON_RIGHT, 15);
         chevron.add_css_class("file-chevron");
         chevron.set_valign(gtk::Align::Center);
@@ -144,6 +159,7 @@ pub(super) fn column_rows(
             pending_activation_for_unmap.take();
         });
         let was_selected = Rc::new(Cell::new(false));
+        let press_origin = Rc::new(Cell::new((0.0, 0.0)));
         let mut content_drag: Option<gtk::DragSource> = None;
         if weak_state.upgrade().is_some_and(|state| state.interactive) {
             let drag = gtk::DragSource::builder()
@@ -158,8 +174,18 @@ pub(super) fn column_rows(
             let search_results_for_drag = search_results_for_factory.clone();
             let selection_for_drag = selection_for_rows.clone();
             let was_selected_for_drag = was_selected.clone();
+            let press_origin_for_drag = press_origin.clone();
             drag.connect_prepare(move |source, x, y| {
                 let prepare_row = prepare_row.upgrade()?;
+                if let Some(current) = source.current_event().and_then(|event| event.position())
+                    && !crate::ui::pointer::exceeds_drag_threshold(
+                        press_origin_for_drag.get(),
+                        current,
+                        prepare_row.settings().gtk_dnd_drag_threshold(),
+                    )
+                {
+                    return None;
+                }
                 if prepare_row
                     .pick(x, y, gtk::PickFlags::DEFAULT)
                     .is_some_and(|target| crate::ui::focus_navigation::editable(&target))
@@ -172,32 +198,36 @@ pub(super) fn column_rows(
                 let state = weak_state_for_drag.upgrade()?;
                 let dragged_item = dragged_item.upgrade()?;
                 let position = dragged_item.position();
-                let (entry, selected) = if search_active_for_drag.get() {
+                let entries = if search_active_for_drag.get() {
                     let results = search_results_for_drag.borrow();
                     let entry =
                         crate::ui::browser::search_result_entry(results.get(position as usize)?);
-                    let selected = crate::ui::browser::collection::bitset_positions(
+                    let selected: Vec<_> = crate::ui::browser::collection::bitset_positions(
                         &selection_for_drag.selection(),
                     )
                     .into_iter()
                     .filter_map(|position| results.get(position as usize))
                     .map(crate::ui::browser::search_result_entry)
                     .collect();
-                    (entry, selected)
+                    if selected
+                        .iter()
+                        .any(|selected| selected.location == entry.location)
+                    {
+                        selected
+                    } else {
+                        vec![entry]
+                    }
                 } else {
                     let source_position = map_for_drag.source_position(position)?;
-                    (
-                        state.browser.entry_at(depth, source_position)?,
-                        state.browser.selected_entries(),
-                    )
-                };
-                let entries = if selected
-                    .iter()
-                    .any(|selected| selected.location == entry.location)
-                {
-                    selected
-                } else {
-                    vec![entry]
+                    let entry = state.browser.entry_at(depth, source_position)?;
+                    if state
+                        .browser
+                        .active_selection_contains(depth, source_position)
+                    {
+                        state.browser.selected_entries()
+                    } else {
+                        vec![entry]
+                    }
                 };
                 if let Some((texture, hot_x, hot_y)) = drag_preview_icon(&prepare_row, &entries) {
                     source.set_icon(Some(&texture), hot_x, hot_y);
@@ -220,6 +250,7 @@ pub(super) fn column_rows(
             let dragged_row = row.downgrade();
             let weak_state_for_end = weak_state.clone();
             drag.connect_drag_end(move |_, _, _| {
+                clear_active_drag();
                 if let Some(row) = dragged_row.upgrade() {
                     row.remove_css_class("dragging");
                 }
@@ -385,7 +416,6 @@ pub(super) fn column_rows(
         let press_moved_for_press = press_moved.clone();
         let press_moved_for_update = press_moved.clone();
         let press_moved_for_release = press_moved.clone();
-        let press_origin = Rc::new(Cell::new((0.0, 0.0)));
         let press_origin_for_press = press_origin.clone();
         let press_origin_for_update = press_origin.clone();
         let rename_position = Rc::new(Cell::new(None::<usize>));
@@ -464,7 +494,6 @@ pub(super) fn column_rows(
                         state.columns_click_activation.get(),
                         control,
                         shift,
-                        preserve_group,
                     );
                 let location_hold = (!search_active_for_click.get()
                     && entry.is_directory()
@@ -593,12 +622,7 @@ pub(super) fn column_rows(
                     });
                     let preview = !activate
                         && !slow_click_rename
-                        && should_preview_pointer_press(
-                            press_count,
-                            control,
-                            shift,
-                            preserve_group,
-                        )
+                        && should_preview_pointer_press(press_count, control, shift)
                         && entry_responds_to_preview_click(
                             entry,
                             state.single_click_previews.get(),
@@ -970,6 +994,7 @@ pub(super) fn column_rows(
             &icon,
             entry.as_ref().and_then(|e| e.location.native_path()),
         );
+        let show_sizes = crate::ui::preferences::PreferenceManager::shared().columns_show_sizes();
         if let Some(entry) = entry.as_ref() {
             let mode_active = state
                 .as_ref()
@@ -1001,7 +1026,10 @@ pub(super) fn column_rows(
                 && !scrolling_for_bind.get()
                 && let Some(state) = state.as_ref()
                 && let Some(position) = source_position
-                && metadata_needs_fill(entry)
+                && (metadata_needs_fill(entry)
+                    || (show_sizes
+                        && entry.is_directory()
+                        && entry.child_count == crate::model::MetadataValue::Unknown))
             {
                 crate::ui::thumbnail::request_metadata(
                     &icon,
@@ -1010,7 +1038,7 @@ pub(super) fn column_rows(
                     depth,
                     position,
                     entry.location.clone(),
-                    false,
+                    show_sizes && entry.is_directory(),
                 );
             }
         } else {
@@ -1022,7 +1050,7 @@ pub(super) fn column_rows(
         }
         let size_text = column_size_text(entry.as_ref());
         size.set_label(&size_text);
-        size.set_visible(!editing && !size_text.is_empty());
+        size.set_visible(show_sizes && !editing && !size_text.is_empty());
         crate::ui::accessibility::describe_entry(item, &label.label(), entry.as_ref());
     });
     let rows_for_unbind = bound_rows.clone();

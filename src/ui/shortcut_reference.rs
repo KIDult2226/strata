@@ -598,7 +598,26 @@ const TENXER_PREVIEW_OWNED: &[Shortcut] = &[
         Any(&[LEFT, RIGHT]),
         "Seek −5 / +5 seconds",
     ),
-    within("%{keys} in media", Any(&[UP, DOWN]), "Volume up / down"),
+    within(
+        "%{keys} in media",
+        Any(&[
+            MEDIA_SEEK_BACK_PAGE,
+            MEDIA_SEEK_FORWARD_PAGE,
+            PAGE_DOWN,
+            PAGE_UP,
+        ]),
+        "Seek −30 / +30 seconds",
+    ),
+    within(
+        "%{keys} in media",
+        Any(&[MEDIA_SEEK_START, FIRST_ITEM, TENXER_LAST_ITEM, LAST_ITEM]),
+        "Seek to the start / end",
+    ),
+    within(
+        "%{keys} in media",
+        Any(&[UP, DOWN, MEDIA_VOLUME_STEP_UP, MEDIA_VOLUME_STEP_DOWN]),
+        "Volume up / down",
+    ),
     within("%{keys} in media", One(TENXER_MEDIA_MUTE), "Mute / unmute"),
     within(
         "%{keys} in a document",

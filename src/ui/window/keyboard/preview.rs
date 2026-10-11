@@ -11,7 +11,7 @@ use crate::{
     app::Browser,
     ui::{
         keys::{Binding, KeyPress, SHORTCUT_MODIFIERS, bindings::*},
-        preview::{ArchiveMove, DocumentScroll, MediaCommand, PreviewSurface, preview_target},
+        preview::{ArchiveMove, DocumentScroll, PreviewSurface, media_key_command, preview_target},
         tenxer_mode::Chord,
     },
 };
@@ -211,18 +211,7 @@ impl Dispatcher {
             self.return_from_preview(browser);
             return true;
         }
-        let Some((_, command)) = [
-            (SPACE, MediaCommand::PlayPause),
-            (LEFT, MediaCommand::SeekBack),
-            (RIGHT, MediaCommand::SeekForward),
-            (UP, MediaCommand::VolumeUp),
-            (DOWN, MediaCommand::VolumeDown),
-            (TENXER_MEDIA_MUTE, MediaCommand::Mute),
-            (TENXER_MEDIA_PREVIOUS, MediaCommand::Previous),
-            (TENXER_MEDIA_NEXT, MediaCommand::Next),
-        ]
-        .into_iter()
-        .find(|(key, _)| press.is(*key)) else {
+        let Some(command) = media_key_command(press) else {
             return false;
         };
         self.preview.media_key(command);

@@ -987,3 +987,17 @@ fn recycling_the_hovered_row_does_not_open_its_previous_folder() {
         },
     );
 }
+
+#[test]
+fn a_cached_internal_drag_never_replaces_another_drops_sources() {
+    crate::test_support::gtk_test(
+        "ui::browser::clipboard::tests::a_cached_internal_drag_never_replaces_another_drops_sources",
+        || {
+            let dragged = crate::test_support::operations::entry(Location::local("/fixture/a.txt"));
+            let _content = file_drag_content(&[dragged]).expect("drag content");
+            let prepared = prepare_file_drop_target(|| Some(Location::local("/fixture/dest")));
+
+            assert!(prepared.state.sources(&prepared.target).is_empty());
+        },
+    );
+}

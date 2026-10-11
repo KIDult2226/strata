@@ -10,7 +10,7 @@ use std::{
 
 use crate::{
     app::navigation::{EntryInsertion, EntrySplice, NavigationPath, NavigationState},
-    model::{FileEntry, Location, SortDirection, SortKey, ViewPreferences},
+    model::{FileEntry, Location, SortDirection, SortKey, ViewPreferences, lexically_normalized},
     services::{
         ArchiveFormat, CompressRequest, CreateDirectoryRequest, CreateFileRequest, DeleteRequest,
         DirectoryChange, DirectoryRequest, ExtractRequest, FileSource, LoadHandle,
@@ -2262,6 +2262,12 @@ impl Browser {
 
     pub fn selected_positions(&self, depth: usize) -> Vec<usize> {
         self.state.borrow().selected_positions(depth)
+    }
+
+    pub fn active_selection_contains(&self, depth: usize, position: usize) -> bool {
+        self.state
+            .borrow()
+            .active_selection_contains(depth, position)
     }
 
     pub fn selected_entries(&self) -> Vec<FileEntry> {
@@ -4651,10 +4657,12 @@ fn location_from_input_with_home(
     home: &Path,
 ) -> Result<Location, LocationValidationError> {
     if input == "~" {
-        return Ok(Location::local(home));
+        return Ok(Location::local(lexically_normalized(home)));
     }
     if let Some(relative) = input.strip_prefix("~/") {
-        return Ok(Location::local(home.join(relative.trim_matches('/'))));
+        return Ok(Location::local(lexically_normalized(
+            &home.join(relative.trim_matches('/')),
+        )));
     }
     if input.starts_with('~') {
         return Err(LocationValidationError::UnsupportedShorthand(
@@ -4662,10 +4670,7 @@ fn location_from_input_with_home(
         ));
     }
     if !is_uri_like(input) {
-        // stat reports ENOTDIR for a file with a trailing slash, bypassing file reveal.
-        let trimmed = input.trim_end_matches('/');
-        let path = if trimmed.is_empty() { "/" } else { trimmed };
-        return Ok(Location::local(PathBuf::from(path)));
+        return Ok(Location::local(lexically_normalized(Path::new(input))));
     }
     let scheme_end = input.find("://").unwrap_or_default();
     let scheme = &input[..scheme_end];
@@ -4723,19 +4728,9 @@ fn looks_like_scp_shorthand(input: &str) -> bool {
 }
 
 /// Joins natively, so a non-UTF-8 base stays byte-exact, and resolves `.` and
-/// `..` lexically like a shell's `cd`.
+/// `..` as text.
 fn join_relative(base: &Path, relative: &str) -> PathBuf {
-    let mut path = base.to_path_buf();
-    for component in Path::new(relative).components() {
-        match component {
-            std::path::Component::ParentDir => {
-                path.pop();
-            }
-            std::path::Component::Normal(name) => path.push(name),
-            _ => {}
-        }
-    }
-    path
+    lexically_normalized(&base.join(relative))
 }
 
 fn is_relative_path_input(input: &str) -> bool {
