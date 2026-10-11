@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use super::{Hyprland, Shake, ShakeListener};
+use super::{Hyprland, Shake, ShakeListener, shelf_address};
 use std::time::Duration;
 
 #[test]
@@ -56,5 +56,30 @@ fn vertical_and_slow_changes_do_not_trigger() {
             Duration::from_millis(index as u64 * 220),
             true,
         ));
+    }
+}
+
+#[test]
+fn shelf_address_requires_this_process_and_the_exact_title() {
+    let title = "Étagère (l’été) ^$";
+    let clients = |pid: u32, title: &str, address: &str| {
+        serde_json::json!([
+            { "pid": 1, "title": "Other", "address": "0x1" },
+            { "pid": pid, "title": title, "address": address },
+        ])
+        .to_string()
+    };
+    for (pid, listed, address, expected) in [
+        (42, title, "0xabc123", Some("0xabc123")),
+        (7, title, "0xabc123", None),
+        (42, "Étagère", "0xabc123", None),
+        (42, title, "0xabc' }) evil", None),
+        (42, title, "0x", None),
+    ] {
+        assert_eq!(
+            shelf_address(clients(pid, listed, address).as_bytes(), 42, title).as_deref(),
+            expected,
+            "{pid} {listed} {address}"
+        );
     }
 }

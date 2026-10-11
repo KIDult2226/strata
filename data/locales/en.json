@@ -1235,5 +1235,17 @@
   "your package manager": "your package manager",
   "{paths} is for whole-selection actions; use {path} for a per-item action": "{paths} is for whole-selection actions; use {path} for a per-item action",
   "{path} is for per-item actions; use {paths} for a whole selection": "{path} is for per-item actions; use {paths} for a whole selection",
-  "↑↓  navigate": "↑↓  navigate"
+  "↑↓  navigate": "↑↓  navigate",
+  "Strata Shelf": "Strata Shelf",
+  "Hide shelf": "Hide shelf",
+  "Move shelf": "Move shelf",
+  "Drag to move the shelf": "Drag to move the shelf",
+  "Shelf actions": "Shelf actions",
+  "Shelf preview": "Shelf preview",
+  "Drop files here": "Drop files here",
+  "Show individual shelf items": "Show individual shelf items",
+  "Shelf items": "Shelf items",
+  "Clear shelf": "Clear shelf",
+  "Add selection": "Add selection",
+  "Choose a regular folder as the destination.": "Choose a regular folder as the destination."
 }

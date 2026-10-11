@@ -1235,5 +1235,17 @@
   "your package manager": "менеджер пакетов",
   "{paths} is for whole-selection actions; use {path} for a per-item action": "{paths} предназначен для действий над всем выделением; для действия над каждым элементом используйте {path}",
   "{path} is for per-item actions; use {paths} for a whole selection": "{path} предназначен для действий над каждым элементом; для всего выделения используйте {paths}",
-  "↑↓  navigate": "↑↓  навигация"
+  "↑↓  navigate": "↑↓  навигация",
+  "Strata Shelf": "Полка Strata",
+  "Hide shelf": "Скрыть полку",
+  "Move shelf": "Переместить полку",
+  "Drag to move the shelf": "Перетащите, чтобы переместить полку",
+  "Shelf actions": "Действия с полкой",
+  "Shelf preview": "Предпросмотр полки",
+  "Drop files here": "Перетащите файлы сюда",
+  "Show individual shelf items": "Показать отдельные элементы полки",
+  "Shelf items": "Элементы полки",
+  "Clear shelf": "Очистить полку",
+  "Add selection": "Добавить выделенное",
+  "Choose a regular folder as the destination.": "Выберите обычную папку в качестве места назначения."
 }

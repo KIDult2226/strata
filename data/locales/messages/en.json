@@ -941,5 +941,7 @@
   "“%{name}” must be a regular file, not a link or directory": "“%{name}” must be a regular file, not a link or directory",
   "“%{path}” does not contain an action.toml file": "“%{path}” does not contain an action.toml file",
   "“%{path}” is not an absolute path, so it cannot be passed to an action": "“%{path}” is not an absolute path, so it cannot be passed to an action",
-  "“%{program}” was not found on your PATH": "“%{program}” was not found on your PATH"
+  "“%{program}” was not found on your PATH": "“%{program}” was not found on your PATH",
+  "Open the floating shelf": "Open the floating shelf",
+  "Remove “%{name}” from shelf": "Remove “%{name}” from shelf"
 }

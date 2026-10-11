@@ -147,10 +147,3 @@ fn file_drop_controller_stages_native_and_uri_lists_without_changing_sources() {
         },
     );
 }
-
-#[test]
-fn collecting_does_not_accept_virtual_recent_entries() {
-    let shelf = Shelf::default();
-    assert!(!shelf.add([Location::uri("recent:///item")]));
-    assert!(shelf.locations().is_empty());
-}

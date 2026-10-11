@@ -1235,5 +1235,17 @@
   "your package manager": "trình quản lý gói của bạn",
   "{paths} is for whole-selection actions; use {path} for a per-item action": "{paths} dành cho hành động trên toàn bộ lựa chọn; dùng {path} cho hành động theo từng mục",
   "{path} is for per-item actions; use {paths} for a whole selection": "{path} dành cho hành động theo từng mục; dùng {paths} cho toàn bộ lựa chọn",
-  "↑↓  navigate": "↑↓  điều hướng"
+  "↑↓  navigate": "↑↓  điều hướng",
+  "Strata Shelf": "Kệ Strata",
+  "Hide shelf": "Ẩn kệ",
+  "Move shelf": "Di chuyển kệ",
+  "Drag to move the shelf": "Kéo để di chuyển kệ",
+  "Shelf actions": "Thao tác với kệ",
+  "Shelf preview": "Xem trước kệ",
+  "Drop files here": "Thả tệp vào đây",
+  "Show individual shelf items": "Hiển thị từng mục trên kệ",
+  "Shelf items": "Các mục trên kệ",
+  "Clear shelf": "Xóa sạch kệ",
+  "Add selection": "Thêm mục đã chọn",
+  "Choose a regular folder as the destination.": "Hãy chọn một thư mục thông thường làm đích."
 }

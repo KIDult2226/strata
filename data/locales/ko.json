@@ -1235,5 +1235,17 @@
   "your package manager": "패키지 관리자",
   "{paths} is for whole-selection actions; use {path} for a per-item action": "{paths}는 선택 전체 동작용입니다. 항목별 동작에는 {path}를 사용하세요",
   "{path} is for per-item actions; use {paths} for a whole selection": "{path}는 항목별 동작용입니다. 선택 전체에는 {paths}를 사용하세요",
-  "↑↓  navigate": "↑↓  이동"
+  "↑↓  navigate": "↑↓  이동",
+  "Strata Shelf": "Strata 선반",
+  "Hide shelf": "선반 숨기기",
+  "Move shelf": "선반 이동",
+  "Drag to move the shelf": "드래그하여 선반 이동",
+  "Shelf actions": "선반 작업",
+  "Shelf preview": "선반 미리 보기",
+  "Drop files here": "여기에 파일 놓기",
+  "Show individual shelf items": "선반 항목 개별 표시",
+  "Shelf items": "선반 항목",
+  "Clear shelf": "선반 비우기",
+  "Add selection": "선택 항목 추가",
+  "Choose a regular folder as the destination.": "일반 폴더를 대상으로 선택하세요."
 }

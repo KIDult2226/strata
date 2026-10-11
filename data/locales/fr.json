@@ -1235,5 +1235,17 @@
   "your package manager": "votre gestionnaire de paquets",
   "{paths} is for whole-selection actions; use {path} for a per-item action": "{paths} est réservé aux actions sur toute la sélection ; utilisez {path} pour une action par élément",
   "{path} is for per-item actions; use {paths} for a whole selection": "{path} est réservé aux actions par élément ; utilisez {paths} pour toute la sélection",
-  "↑↓  navigate": "↑↓  naviguer"
+  "↑↓  navigate": "↑↓  naviguer",
+  "Strata Shelf": "Étagère Strata",
+  "Hide shelf": "Masquer l’étagère",
+  "Move shelf": "Déplacer l’étagère",
+  "Drag to move the shelf": "Faites glisser pour déplacer l’étagère",
+  "Shelf actions": "Actions de l’étagère",
+  "Shelf preview": "Aperçu de l’étagère",
+  "Drop files here": "Déposez des fichiers ici",
+  "Show individual shelf items": "Afficher chaque élément de l’étagère",
+  "Shelf items": "Éléments de l’étagère",
+  "Clear shelf": "Vider l’étagère",
+  "Add selection": "Ajouter la sélection",
+  "Choose a regular folder as the destination.": "Choisissez un dossier ordinaire comme destination."
 }

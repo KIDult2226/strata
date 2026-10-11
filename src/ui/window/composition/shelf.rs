@@ -13,12 +13,13 @@ use gtk::{gdk, gio, glib, prelude::*};
 use crate::{
     app::BrowserEvent,
     assets::{self, icons},
+    i18n::tr,
     model::Location,
     services::DropCommit,
     ui::browser::paths::is_trash_location,
     ui::browser::{
-        BrowserView, WeakBrowserView, context_menu_option, file_drag_locations, icon_for_name,
-        locations_equal, locations_from_file_list_value, show_error_dialog,
+        BrowserView, WeakBrowserView, clear_active_drag, context_menu_option, file_drag_locations,
+        icon_for_name, locations_equal, locations_from_file_list_value, show_error_dialog,
     },
     ui::thumbnail::{self, ThumbnailSlot},
     ui::{
@@ -145,7 +146,7 @@ pub(super) fn install(
             let view = ShelfView::new(active_browser.clone());
             let floating = gtk::Window::builder()
                 .application(&application)
-                .title("Strata Shelf")
+                .title(tr("Strata Shelf"))
                 .decorated(false)
                 .resizable(false)
                 .default_width(240)
@@ -246,8 +247,12 @@ impl FloatingShelf {
             // Hyprland positions transient windows, while Wayland prevents GTK from placing them.
             let window = self.window.downgrade();
             glib::timeout_add_local_once(Duration::from_millis(40), move || {
-                if window.upgrade().is_some_and(|window| window.is_visible()) {
-                    hyprland.move_shelf(x.saturating_sub(115), y.saturating_sub(105));
+                if let Some(window) = window.upgrade().filter(|window| window.is_visible()) {
+                    hyprland.move_shelf(
+                        &window.title().unwrap_or_default(),
+                        x.saturating_sub(115),
+                        y.saturating_sub(105),
+                    );
                 }
             });
         }
@@ -268,8 +273,9 @@ impl ShelfView {
         bar.add_css_class("file-shelf-bar");
         let close = gtk::Button::new();
         close.set_child(Some(&assets::primary_icon(icons::X, 16)));
-        close.set_tooltip_text(Some("Hide shelf"));
-        crate::ui::accessibility::set_label(&close, "Hide shelf");
+        let hide = tr("Hide shelf");
+        close.set_tooltip_text(Some(&hide));
+        crate::ui::accessibility::set_label(&close, &hide);
         controls::pane_header_action(&close);
         close.add_css_class("file-shelf-control");
         close.connect_clicked({
@@ -289,22 +295,23 @@ impl ShelfView {
         handle.set_hexpand(true);
         handle.set_child(Some(&gtk::Box::new(gtk::Orientation::Horizontal, 0)));
         handle.set_cursor_from_name(Some("grab"));
-        crate::ui::accessibility::set_label(&handle, "Move shelf");
-        crate::ui::accessibility::set_description(&handle, Some("Drag to move the shelf"));
+        crate::ui::accessibility::set_label(&handle, &tr("Move shelf"));
+        crate::ui::accessibility::set_description(&handle, Some(&tr("Drag to move the shelf")));
         bar.append(&handle);
         let menu = gtk::MenuButton::new();
         menu.set_child(Some(&assets::primary_icon(icons::ELLIPSIS, 16)));
         menu.set_direction(gtk::ArrowType::None);
         controls::pane_header_action(&menu);
         menu.add_css_class("file-shelf-control");
-        menu.set_tooltip_text(Some("Shelf actions"));
-        crate::ui::accessibility::set_label(&menu, "Shelf actions");
+        let menu_label = tr("Shelf actions");
+        menu.set_tooltip_text(Some(&menu_label));
+        crate::ui::accessibility::set_label(&menu, &menu_label);
         bar.append(&menu);
         widget.append(&bar);
 
         let preview = gtk::Overlay::new();
         preview.add_css_class("file-shelf-preview");
-        crate::ui::accessibility::set_label(&preview, "Shelf preview");
+        crate::ui::accessibility::set_label(&preview, &tr("Shelf preview"));
         let (back_card, back) = preview_card(96);
         back_card.add_css_class("file-shelf-preview-back");
         preview.set_child(Some(&back_card));
@@ -321,21 +328,24 @@ impl ShelfView {
             let shelf = shelf.clone();
             move |_, _, _| file_drag_locations(&shelf.locations())
         });
+        drag.connect_drag_end(|_, _, _| clear_active_drag());
         preview.add_controller(drag);
         widget.append(&preview);
 
-        let hint = gtk::Label::new(Some("Drop files here"));
+        let hint = gtk::Label::new(Some(&tr("Drop files here")));
         hint.add_css_class("file-shelf-hint");
         hint.set_wrap(true);
         hint.set_justify(gtk::Justification::Center);
         widget.append(&hint);
 
-        let count = gtk::MenuButton::builder().label("0 items").build();
+        let count = gtk::MenuButton::builder()
+            .label(crate::i18n::count("items", 0))
+            .build();
         count.set_direction(gtk::ArrowType::None);
         controls::pane_header_action(&count);
         count.add_css_class("file-shelf-count");
         count.set_halign(gtk::Align::Center);
-        crate::ui::accessibility::set_description(&count, Some("Show individual shelf items"));
+        crate::ui::accessibility::set_description(&count, Some(&tr("Show individual shelf items")));
         widget.append(&count);
         let viewer = gtk::Popover::new();
         viewer.set_has_arrow(false);
@@ -343,7 +353,7 @@ impl ShelfView {
         viewer.add_css_class("column-popover");
         viewer.add_css_class("file-shelf-viewer");
         dismiss_on_outside_scroll(&viewer);
-        crate::ui::accessibility::set_label(&viewer, "Shelf items");
+        crate::ui::accessibility::set_label(&viewer, &tr("Shelf items"));
         count.set_popover(Some(&viewer));
         let scroll = gtk::ScrolledWindow::new();
         scroll.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
@@ -410,8 +420,8 @@ impl ShelfView {
                 if destination.is_recent_location() || is_trash_location(&destination) {
                     show_error_dialog(
                         &browser.widget(),
-                        "Unable to transfer",
-                        "Choose a regular folder as the destination.",
+                        &tr("Unable to transfer"),
+                        &tr("Choose a regular folder as the destination."),
                     );
                     return;
                 }
@@ -475,11 +485,7 @@ impl ShelfView {
                     list.remove(&row);
                 }
                 let locations = shelf.locations();
-                count.set_label(&format!(
-                    "{} item{}",
-                    locations.len(),
-                    if locations.len() == 1 { "" } else { "s" }
-                ));
+                count.set_label(&crate::i18n::count("items", locations.len()));
                 for (index, image) in [&front, &middle, &back].into_iter().enumerate() {
                     if let Some(location) = locations.iter().rev().nth(index) {
                         if let Some(card) = image.parent() {
@@ -513,11 +519,10 @@ impl ShelfView {
                     thumbnail.set_child(Some(&card));
                     let remove = gtk::Button::new();
                     remove.set_child(Some(&assets::primary_icon(icons::X, 15)));
-                    remove.set_tooltip_text(Some(&format!("Remove {name} from shelf")));
-                    crate::ui::accessibility::set_label(
-                        &remove,
-                        &format!("Remove {name} from shelf"),
-                    );
+                    let remove_label =
+                        rust_i18n::t!("Remove “%{name}” from shelf", name = name).into_owned();
+                    remove.set_tooltip_text(Some(&remove_label));
+                    crate::ui::accessibility::set_label(&remove, &remove_label);
                     controls::pane_header_action(&remove);
                     remove.add_css_class("file-shelf-control");
                     remove.set_halign(gtk::Align::End);
@@ -543,6 +548,7 @@ impl ShelfView {
                         let location = location.clone();
                         move |_, _, _| file_drag_locations(std::slice::from_ref(&location))
                     });
+                    drag.connect_drag_end(|_, _, _| clear_active_drag());
                     row.add_controller(drag);
                     list.insert(&row, -1);
                 }

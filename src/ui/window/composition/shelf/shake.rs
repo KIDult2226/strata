@@ -55,12 +55,19 @@ impl Hyprland {
         ))
     }
 
-    pub(super) fn move_shelf(&self, x: i32, y: i32) {
+    pub(super) fn move_shelf(&self, title: &str, x: i32, y: i32) {
+        let Some(address) = self
+            .request("j/clients")
+            .and_then(|clients| shelf_address(&clients, std::process::id(), title))
+        else {
+            return;
+        };
         let _ = self.request(&format!(
-            "/dispatch hl.dsp.window.move({{ x = {x}, y = {y}, window = 'title:^Strata Shelf$' }})"
+            "/dispatch hl.dsp.window.move({{ x = {x}, y = {y}, window = 'address:{address}' }})"
         ));
-        let _ = self
-            .request("/dispatch hl.dsp.window.bring_to_top({ window = 'title:^Strata Shelf$' })");
+        let _ = self.request(&format!(
+            "/dispatch hl.dsp.window.bring_to_top({{ window = 'address:{address}' }})"
+        ));
     }
 
     fn request(&self, command: &str) -> Option<Vec<u8>> {
@@ -111,6 +118,21 @@ impl Hyprland {
             _stop: stop,
         }
     }
+}
+
+/// Matches the exact translated title in Rust, so it never becomes part of a selector.
+fn shelf_address(clients: &[u8], pid: u32, title: &str) -> Option<String> {
+    let clients: Vec<serde_json::Value> = serde_json::from_slice(clients).ok()?;
+    clients.iter().find(|client| {
+        client["pid"].as_u64() == Some(u64::from(pid)) && client["title"].as_str() == Some(title)
+    })?["address"]
+        .as_str()
+        .filter(|address| {
+            address.strip_prefix("0x").is_some_and(|hex| {
+                !hex.is_empty() && hex.bytes().all(|byte| byte.is_ascii_hexdigit())
+            })
+        })
+        .map(str::to_owned)
 }
 
 #[derive(Default)]

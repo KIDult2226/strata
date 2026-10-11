@@ -941,5 +941,7 @@
   "“%{name}” must be a regular file, not a link or directory": "«%{name}» debe ser un archivo normal, no un enlace ni una carpeta",
   "“%{path}” does not contain an action.toml file": "«%{path}» no contiene un archivo action.toml",
   "“%{path}” is not an absolute path, so it cannot be passed to an action": "«%{path}» no es una ruta absoluta, así que no se puede pasar a una acción",
-  "“%{program}” was not found on your PATH": "No se encontró «%{program}» en tu PATH"
+  "“%{program}” was not found on your PATH": "No se encontró «%{program}» en tu PATH",
+  "Open the floating shelf": "Abrir el estante flotante",
+  "Remove “%{name}” from shelf": "Quitar «%{name}» del estante"
 }
