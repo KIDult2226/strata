@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
+use gtk::gdk;
 use gtk::subclass::prelude::ObjectSubclassIsExt;
 use std::time::Instant;
 
@@ -96,6 +97,43 @@ fn enter_in_a_single_line_field_invokes_the_primary_action() {
             confirm.set_sensitive(false);
             name.emit_by_name::<()>("activate", &[]);
             assert_eq!(clicks.get(), 2, "a disabled primary action stays inert");
+        },
+    );
+}
+
+#[test]
+fn escape_closes_with_any_modifiers_held_and_other_keys_pass_through() {
+    crate::test_support::gtk_test(
+        "ui::modal::tests::escape_closes_with_any_modifiers_held_and_other_keys_pass_through",
+        || {
+            let layer = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            let closed = Rc::new(Cell::new(false));
+            let close = closed.clone();
+            close_on_escape(&layer, move || close.set(true));
+            let controllers = layer.observe_controllers();
+            let keys = (0..controllers.n_items())
+                .find_map(|index| {
+                    controllers
+                        .item(index)
+                        .and_downcast::<gtk::EventControllerKey>()
+                })
+                .expect("key controller on the layer");
+            let every_modifier = gdk::ModifierType::CONTROL_MASK
+                | gdk::ModifierType::ALT_MASK
+                | gdk::ModifierType::SHIFT_MASK
+                | gdk::ModifierType::SUPER_MASK;
+            for (key, modifiers, closes) in [
+                (gdk::Key::Escape, gdk::ModifierType::empty(), true),
+                (gdk::Key::Escape, every_modifier, true),
+                (gdk::Key::Return, gdk::ModifierType::empty(), false),
+            ] {
+                let handled = keys.emit_by_name::<bool>("key-pressed", &[&key, &0u32, &modifiers]);
+                assert_eq!(
+                    (handled, closed.replace(false)),
+                    (closes, closes),
+                    "{key:?} with {modifiers:?}"
+                );
+            }
         },
     );
 }

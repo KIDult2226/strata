@@ -20,8 +20,7 @@ use crate::ui::{
         ModalTone, form_check_button, form_entry, form_error_label, message_dialog_description,
         message_dialog_layout, modal_layout, segmented_control,
     },
-    keys::{self, bindings::ESCAPE_ANY},
-    modal::{ModalHost, dismiss_modal_layer, modal_layer, show_error_dialog},
+    modal::{ModalHost, close_on_escape, dismiss_modal_layer, modal_layer, show_error_dialog},
 };
 
 use super::{append_heading, page_content, scrollable_page, search};
@@ -344,17 +343,7 @@ impl PageState {
             let dismiss = dismiss.clone();
             button.connect_clicked(move |_| dismiss());
         }
-        let escape = gtk::EventControllerKey::new();
-        let dismiss_for_escape = dismiss.clone();
-        keys::on_press(&escape, move |_, press| {
-            if press.is(ESCAPE_ANY) {
-                dismiss_for_escape();
-                glib::Propagation::Stop
-            } else {
-                glib::Propagation::Proceed
-            }
-        });
-        layer.add_controller(escape);
+        close_on_escape(&layer, move || dismiss());
         crate::ui::modal::submit_on_enter(&layout.body, &layout.confirm);
         // The library's search entry must not inherit the modal's save binding.
         for button in &form.examples {

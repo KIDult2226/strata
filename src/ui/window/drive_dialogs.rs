@@ -14,9 +14,10 @@ use crate::{
             FormTextField, ModalLayout, ModalTone, ProgressSummary, form_check_button, form_label,
             keep_words_whole, modal_layout, progress_summary, properties_action,
         },
-        keys::{self, bindings::ESCAPE_ANY},
         missing_tools::{MissingTool, show_missing_tools},
-        modal::{ModalHost, dismiss_modal_layer, modal_layer, remember_modal_focus},
+        modal::{
+            ModalHost, close_on_escape, dismiss_modal_layer, modal_layer, remember_modal_focus,
+        },
     },
 };
 
@@ -321,17 +322,7 @@ fn wire_modal_close(shell: &ModalShell) {
     shell.layout.cancel.connect_clicked(move |_| cancelled());
     let closed = close.clone();
     shell.layout.close.connect_clicked(move |_| closed());
-    let escaped = close.clone();
-    let escape = gtk::EventControllerKey::new();
-    keys::on_press(&escape, move |_, press| {
-        if press.is(ESCAPE_ANY) {
-            escaped();
-            glib::Propagation::Stop
-        } else {
-            glib::Propagation::Proceed
-        }
-    });
-    shell.layer.add_controller(escape);
+    close_on_escape(&shell.layer, move || close());
     shell.layout.confirm.grab_focus();
 }
 
@@ -926,16 +917,6 @@ fn wire_modal_close_except_confirm(shell: &ModalShell) {
     shell.layout.cancel.connect_clicked(move |_| cancelled());
     let closed = close.clone();
     shell.layout.close.connect_clicked(move |_| closed());
-    let escaped = close.clone();
-    let escape = gtk::EventControllerKey::new();
-    keys::on_press(&escape, move |_, press| {
-        if press.is(ESCAPE_ANY) {
-            escaped();
-            glib::Propagation::Stop
-        } else {
-            glib::Propagation::Proceed
-        }
-    });
-    shell.layer.add_controller(escape);
+    close_on_escape(&shell.layer, move || close());
     shell.layout.confirm.grab_focus();
 }

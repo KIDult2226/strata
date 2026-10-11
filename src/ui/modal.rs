@@ -515,6 +515,22 @@ pub(super) fn modal_layer_with_backdrop(
     layer
 }
 
+pub(super) fn close_on_escape(
+    widget: &impl IsA<gtk::Widget>,
+    close: impl Fn() + 'static,
+) -> gtk::EventControllerKey {
+    let escape = gtk::EventControllerKey::new();
+    keys::on_press(&escape, move |_, press| {
+        if !press.is(ESCAPE_ANY) {
+            return glib::Propagation::Proceed;
+        }
+        close();
+        glib::Propagation::Stop
+    });
+    widget.add_controller(escape.clone());
+    escape
+}
+
 pub(super) fn submit_on_enter(fields: &impl IsA<gtk::Widget>, confirm: &gtk::Button) {
     let mut child = fields.as_ref().first_child();
     while let Some(widget) = child {
@@ -768,16 +784,7 @@ fn show_message_dialog(
     close.connect_clicked(move |_| clicked_dismiss());
     let icon_dismiss = dismiss.clone();
     close_icon.connect_clicked(move |_| icon_dismiss());
-    let escape = gtk::EventControllerKey::new();
-    keys::on_press(&escape, move |_, press| {
-        if press.is(ESCAPE_ANY) {
-            dismiss();
-            glib::Propagation::Stop
-        } else {
-            glib::Propagation::Proceed
-        }
-    });
-    layer.add_controller(escape);
+    close_on_escape(&layer, move || dismiss());
     close.grab_focus();
 }
 
@@ -837,16 +844,6 @@ pub(super) fn show_delete_error_dialog(
         confirm_dismiss();
         on_retry();
     });
-    let escape = gtk::EventControllerKey::new();
-    let escape_dismiss = dismiss.clone();
-    keys::on_press(&escape, move |_, press| {
-        if press.is(ESCAPE_ANY) {
-            escape_dismiss();
-            glib::Propagation::Stop
-        } else {
-            glib::Propagation::Proceed
-        }
-    });
-    layer.add_controller(escape);
+    close_on_escape(&layer, move || dismiss());
     focus_button(&confirm);
 }

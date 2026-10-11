@@ -39,11 +39,8 @@ use super::{
     blur::BlurBin,
     browser::dismiss_modal_layer,
     controls::modal_layout,
-    keys::{
-        self,
-        bindings::{ESCAPE_ANY, SELECT_ALL},
-    },
-    modal::modal_layer_with_backdrop,
+    keys::{self, bindings::SELECT_ALL},
+    modal::{close_on_escape, modal_layer_with_backdrop},
     preferences::PreferenceManager,
     terminal,
 };
@@ -964,15 +961,7 @@ pub fn build_layer(
     let close_hide = close_settings.clone();
     close.connect_clicked(move |_| close_hide());
     let escape_hide = close_settings.clone();
-    let keys = gtk::EventControllerKey::new();
-    keys::on_press(&keys, move |_, press| {
-        if !press.is(ESCAPE_ANY) {
-            return gtk::glib::Propagation::Proceed;
-        }
-        escape_hide();
-        gtk::glib::Propagation::Stop
-    });
-    layer.add_controller(keys);
+    close_on_escape(&layer, move || escape_hide());
 
     let click_layer = layer.clone();
     let click_dialog = responsive_panel.clone();
@@ -2549,20 +2538,10 @@ fn build_update_dialog(
         let layer = layer.clone();
         button.connect_clicked(move |_| close_dialog(&layer));
     }
-    let escape = gtk::EventControllerKey::new();
-    keys::on_press(&escape, {
-        let close_dialog = close_dialog.clone();
+    let escape = close_on_escape(&layer, {
         let layer = layer.clone();
-        move |_, press| {
-            if press.is(ESCAPE_ANY) {
-                close_dialog(&layer);
-                glib::Propagation::Stop
-            } else {
-                glib::Propagation::Proceed
-            }
-        }
+        move || close_dialog(&layer)
     });
-    layer.add_controller(escape.clone());
 
     // Set when the offer this dialog was opened with is no longer eligible on
     // the current channel, which turns the action button into a plain Close.
