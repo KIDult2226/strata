@@ -326,7 +326,7 @@ impl Dispatcher {
     }
 
     fn selection_navigation(&self, browser: &Browser, event: &KeyEvent) -> KeyResult {
-        // Alt+Shift and Super+Shift arrows extend the selection too.
+        // Shift+Up/Down extend the selection even with Ctrl, Alt or Super held.
         const EXTENDS: Modifiers = Modifiers::CONTROL_MASK
             .union(Modifiers::ALT_MASK)
             .union(SUPER);
