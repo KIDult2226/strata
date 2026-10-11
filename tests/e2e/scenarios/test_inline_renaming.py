@@ -228,7 +228,8 @@ def wait_for_edit_closed(strata):
     assert "Gtk-CRITICAL" not in strata.application.log()
 
 
-# With no Latin layout configured, GTK's own text bindings find no A key.
+# The rename handler owns Ctrl+A. Ctrl+X and Ctrl+V reach the text field, where
+# a Russian-only keymap leaves GTK's own bindings no Latin key to match.
 NEW_ITEM_CASES = [
     pytest.param(kind, via_menu, US, id=f"{kind}-{via_menu}")
     for kind, via_menu in [("folder", False), ("folder", True), ("file", True)]
@@ -249,6 +250,11 @@ def test_new_item_exists_before_typing_and_backspace_clears_its_selected_name(
         assert path.read_bytes() == b""
     strata.keyboard.press("End")
     with keyboard_layout(layout):
+        strata.keyboard.press("ctrl+a")
+        strata.keyboard.press("ctrl+x")
+        strata.wait(lambda: field.text == "", "Ctrl+A and Ctrl+X to cut the entire default name")
+        strata.keyboard.press("ctrl+v")
+        strata.wait(lambda: field.text == original, "Ctrl+V to paste the default name back")
         strata.keyboard.press("ctrl+a")
         strata.keyboard.press("BackSpace")
         strata.wait(lambda: field.text == "", "Ctrl+A and Backspace to clear the entire default name")
