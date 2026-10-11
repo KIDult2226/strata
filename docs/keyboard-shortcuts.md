@@ -184,6 +184,11 @@ own action (`clipboard.cut`, `clipboard.copy`, `clipboard.paste`,
 `selection.select-all`, `text.undo`, `text.redo`) and stops the event. Otherwise
 GTK's own text bindings handle it.
 
+A focused cell of a document table follows the same rule for copy and select
+all. The table's key handler runs the cell's action, because it owns the
+selection that spans cells: **Ctrl+C** copies that selection when there is one,
+and **Ctrl+A** clears it first.
+
 ## Adding or changing a shortcut
 
 1. Add the binding to `ui::keys::bindings` and match it in the handler with
