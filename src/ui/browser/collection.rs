@@ -5,6 +5,10 @@ use crate::model::Location;
 use crate::services::{filter_query_allows_typos, fold_for_search};
 use crate::ui::browser::entry::entry_matches;
 use crate::ui::entry_list_model::EntryListModel;
+use crate::ui::keys::{
+    KeyPress,
+    bindings::{ENTER, RIGHT},
+};
 use crate::ui::preferences::PreferenceManager;
 use crate::ui::search_session::SearchScope;
 use gtk::prelude::*;
@@ -731,11 +735,8 @@ pub(crate) fn search_result_entry(item: &crate::services::SearchItem) -> crate::
     }
 }
 
-pub(crate) fn recursive_search_activation_key(key: gtk::gdk::Key) -> bool {
-    matches!(
-        key,
-        gtk::gdk::Key::Return | gtk::gdk::Key::KP_Enter | gtk::gdk::Key::Right
-    )
+pub(crate) fn recursive_search_activation_key(press: &KeyPress) -> bool {
+    press.is_any(&[ENTER, RIGHT])
 }
 
 pub(crate) fn activate_recursive_search_result(

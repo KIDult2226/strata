@@ -24,6 +24,10 @@ use crate::ui::browser::paths::is_trash_root;
 use crate::ui::browser::presentation::LoadPresentation;
 use crate::ui::browser_modes::{ClickActivation, ClickCount};
 use crate::ui::entry_list_model::EntryListModel;
+use crate::ui::keys::{
+    self,
+    bindings::{DOWN, UP},
+};
 use crate::ui::motion::{animations_enabled, emphasized_acceleration, emphasized_deceleration};
 use gtk::prelude::*;
 use gtk::{gio, glib};
@@ -1583,23 +1587,23 @@ impl ViewState {
         let browser_for_navigation = Rc::downgrade(&self.browser);
         let results_for_navigation = search_results.clone();
         let navigation_state = Rc::downgrade(self);
-        search_navigation.connect_key_pressed(move |_, key, _, modifiers| {
+        keys::on_press(&search_navigation, move |_, press| {
             let filter_active = search_active_for_navigation.get()
                 || !query_for_navigation.borrow().trim().is_empty();
-            if !filter_active
-                || modifiers.intersects(
-                    gtk::gdk::ModifierType::CONTROL_MASK
-                        | gtk::gdk::ModifierType::ALT_MASK
-                        | gtk::gdk::ModifierType::SUPER_MASK
-                        | gtk::gdk::ModifierType::SHIFT_MASK,
-                )
-            {
+            if !filter_active {
+                return glib::Propagation::Proceed;
+            }
+            if press.is(UP) {
+                return glib::Propagation::Stop;
+            }
+            let activate = recursive_search_activation_key(press);
+            if !activate && !press.is(DOWN) {
                 return glib::Propagation::Proceed;
             }
             let current = bitset_positions(&selection_for_navigation.selection())
                 .last()
                 .copied();
-            if recursive_search_activation_key(key) {
+            if activate {
                 if search_active_for_navigation.get() {
                     return if current.is_some_and(|position| {
                         activate_recursive_search_result(
@@ -1622,11 +1626,6 @@ impl ViewState {
                 } else {
                     glib::Propagation::Proceed
                 };
-            }
-            match key {
-                gtk::gdk::Key::Down => {}
-                gtk::gdk::Key::Up => return glib::Propagation::Stop,
-                _ => return glib::Propagation::Proceed,
             }
             let Some(next) = current.or_else(|| {
                 search_result_navigation_position(None, selection_for_navigation.n_items(), 1)
@@ -1657,17 +1656,9 @@ impl ViewState {
         let result_selection = selection.clone();
         let query = filter_entry.downgrade();
         let navigation_state = Rc::downgrade(self);
-        return_to_filter.connect_key_pressed(move |controller, key, _, modifiers| {
+        keys::on_press(&return_to_filter, move |controller, press| {
             let filter_active = search_active.get() || !query_for_return.borrow().trim().is_empty();
-            if !filter_active
-                || !matches!(key, gtk::gdk::Key::Up | gtk::gdk::Key::Down)
-                || modifiers.intersects(
-                    gtk::gdk::ModifierType::CONTROL_MASK
-                        | gtk::gdk::ModifierType::SHIFT_MASK
-                        | gtk::gdk::ModifierType::ALT_MASK
-                        | gtk::gdk::ModifierType::SUPER_MASK,
-                )
-            {
+            if !filter_active || !press.is_any(&[UP, DOWN]) {
                 return glib::Propagation::Proceed;
             }
             if controller
@@ -1682,9 +1673,7 @@ impl ViewState {
             if let Some(state) = navigation_state.upgrade() {
                 super::BrowserView { state }.keyboard_navigation();
             }
-            if key != gtk::gdk::Key::Up
-                || bitset_positions(&result_selection.selection()).as_slice() != [0]
-            {
+            if !press.is(UP) || bitset_positions(&result_selection.selection()).as_slice() != [0] {
                 return glib::Propagation::Proceed;
             }
             query
