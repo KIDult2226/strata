@@ -370,7 +370,7 @@ current folder and **s** always searches below it.
 ## 10xer mode
 
 In **Settings → General → Browsing**, **10xer mode** is off by default.
-Its subtitle is **Opinionated keyboard-centric mode with Yazi-style navigation. Disables some features. Toggle with Ctrl-Shift-M.**
+Its subtitle is **Opinionated keyboard-centric mode with Yazi-style navigation. Disables some features. Toggle with Ctrl+Shift+M.**
 The footer shows a compact **10X** pill at the right, immediately before the item count, while the mode is on.
 While the mode is on, the 10xer mode row and the F1 / `~` reference are labeled **(experimental feature, under active development)**. The footer pill shows only **10X**; the note is in its accessible description. Those surfaces list only the commands that currently run.
 It hides window Search and pane Close/filter/refresh/sort chrome in

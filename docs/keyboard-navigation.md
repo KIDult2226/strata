@@ -244,9 +244,9 @@ portal file chooser it lists only the keys that request allows.
 Context-menu hints use `x`, `y`, `p`, `d` / `D`, `r`, `i`, and `M` / `C` / `R`
 (Move to, Copy to, Restore) only when those commands perform the action. `i` toggles a file's preview without taking focus, or is the next column or folder peek for a directory.
 Until those verbs run, the menu keeps the shortcuts that still work and hides
-the unbound defaults (`Y` for copy path, `Space` for preview, and `Ctrl+R` for
+the unbound defaults (`y` for copy path, `Space` for preview, and `Ctrl+R` for
 rename). Planned commands are not shown as working. In the default map, the
-`Y` (copy path) and `P` (pin) hints show only while **Type to search** is off,
+`y` (copy path) and `p` (pin) hints show only while **Type to search** is off,
 because type-to-search claims those letters otherwise.
 
 While a pane shows its search-results page (including filtered results), the footer

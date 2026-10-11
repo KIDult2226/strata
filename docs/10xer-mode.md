@@ -2,7 +2,7 @@
 
 > This document is the target product specification, not a completion report.
 
-10xer mode is an opt-in Yazi-style browsing map. In **Settings → General → Browsing** the row is titled **10xer mode** and its subtitle is **Opinionated keyboard-centric mode with Yazi-style navigation. Disables some features. Toggle with Ctrl-Shift-M.** The footer shows a compact **10X** pill in its far right corner, after the item count, while the mode is on. It hides window Search, pane
+10xer mode is an opt-in Yazi-style browsing map. In **Settings → General → Browsing** the row is titled **10xer mode** and its subtitle is **Opinionated keyboard-centric mode with Yazi-style navigation. Disables some features. Toggle with Ctrl+Shift+M.** The footer shows a compact **10X** pill in its far right corner, after the item count, while the mode is on. It hides window Search, pane
 Close/filter/refresh/sort chrome, and the List and Icons pane header (back,
 forward, and up buttons with the folder title) in interactive browsers, disables
 type-to-search, and uses the footer as the typed-command surface. List column
@@ -712,7 +712,7 @@ These GUI conventions stay available alongside the Yazi verbs:
 Context-menu shortcut hints follow this map (**x** cut, **y** yank, **p** paste,
 **d** / **D** trash / delete, **r** rename, **M** / **C** move / copy to, **R**
 restore, **i** quick preview, next column, or folder peek). The file chooser has no **i** preview, so its Quick preview item
-shows no hint. Default-map hints that are unbound or remapped (**Y** for copy path, **Space** for preview,
+shows no hint. Default-map hints that are unbound or remapped (**y** for copy path, **Space** for preview,
 **Ctrl+R** for rename) are hidden. Copy path is **c c**; Properties is
 **Alt+Enter**.
 

@@ -112,9 +112,13 @@ produces compact elapsed times such as "2m 5s". Exact byte counts use the
 Settings search indexes the translated title as well as the English title and
 aliases. Stable source IDs remain independent of displayed language; do not use
 a translated label to dispatch an action, recognize a page, or sort type groups.
-Shortcut descriptions are translated when rendered and searched, while keycaps
-retain their accelerator spelling. Key-column contexts in the F1 reference are
-`%{keys} …` message templates, so translators can place the untranslated keycaps.
+Shortcut descriptions and key names are translated when rendered, and F1 search
+also matches the English key names. A message that names a shortcut takes it as
+a placeholder, usually `%{keys}`, that `keys::label` fills from the binding
+catalog, so translators place the key text but never write it (see
+[keyboard shortcuts](keyboard-shortcuts.md#shortcut-labels)). Korean puts a noun
+before any particle that follows the placeholder (`%{keys} 키를`), because the
+particle cannot follow how the key is read.
 
 External release notes, system/GIO descriptions, uncommon system errors, and
 toolkit-owned controls may follow their provider or system language. Do not
