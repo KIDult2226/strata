@@ -186,7 +186,10 @@ impl TabStrip {
         select.set_child(Some(&content));
         let close = layout::header_action(
             crate::assets::icons::X,
-            &crate::i18n::tr("Close tab (Ctrl+W)"),
+            &crate::ui::shortcut_reference::with_keys(
+                "Close tab (%{keys})",
+                crate::ui::keys::Keys::One(crate::ui::keys::bindings::TAB_CLOSE),
+            ),
         );
         close.remove_css_class("header-action");
         let close_icons = gtk::Stack::new();
@@ -355,7 +358,10 @@ impl TabStrip {
         for (index, header) in self.headers.borrow().iter().enumerate() {
             let visible = show && index < 10;
             changed |= header.hint.is_visible() != visible;
-            header.hint.set_text(&((index + 1) % 10).to_string());
+            header.hint.set_text(&crate::ui::keys::digit_label(
+                crate::ui::keys::bindings::TAB_NUMBERS.step(),
+                ((index + 1) % 10) as u8,
+            ));
             header.hint.set_visible(visible);
         }
         if changed {

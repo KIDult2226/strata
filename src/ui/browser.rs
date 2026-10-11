@@ -369,9 +369,7 @@ impl BrowserView {
             .build();
         location_entry.add_css_class("location-entry");
         let confirm_location = gtk::Button::builder()
-            .tooltip_text(crate::i18n::tr(
-                super::accessibility::LOCATION_CONFIRM_LABEL,
-            ))
+            .tooltip_text(super::accessibility::location_confirm_label())
             .build();
         confirm_location.set_child(Some(&crate::assets::primary_icon(
             crate::assets::icons::CHECK,
@@ -379,7 +377,7 @@ impl BrowserView {
         )));
         confirm_location.add_css_class("location-action");
         let cancel_location = gtk::Button::builder()
-            .tooltip_text(crate::i18n::tr(super::accessibility::LOCATION_CANCEL_LABEL))
+            .tooltip_text(super::accessibility::location_cancel_label())
             .build();
         cancel_location.set_child(Some(&crate::assets::primary_icon(
             crate::assets::icons::X,

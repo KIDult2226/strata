@@ -6,7 +6,11 @@ use gtk::prelude::*;
 
 use crate::model::{EntryKind, FileEntry};
 
-use super::browser_modes::BrowserMode;
+use super::{
+    browser_modes::BrowserMode,
+    keys::{Keys, bindings},
+    shortcut_reference::with_keys,
+};
 
 pub(super) fn set_label(widget: &impl IsA<gtk::Accessible>, label: &str) {
     widget.update_property(&[gtk::accessible::Property::Label(label)]);
@@ -49,19 +53,26 @@ pub(super) fn sync_checked_with_icon(option: &impl IsA<gtk::Widget>, check: &gtk
     });
 }
 
-// Location controls require explicit accessible names.
-pub(super) const LOCATION_LABEL: &str = "Location (Ctrl+L)";
-pub(super) const LOCATION_CONFIRM_LABEL: &str = "Navigate (Enter)";
-pub(super) const LOCATION_CANCEL_LABEL: &str = "Cancel (Escape)";
+pub(super) fn location_confirm_label() -> String {
+    with_keys("Navigate (%{keys})", Keys::One(bindings::ENTER))
+}
 
+pub(super) fn location_cancel_label() -> String {
+    with_keys("Cancel (%{keys})", Keys::One(bindings::ESCAPE))
+}
+
+// Location controls require explicit accessible names.
 pub(super) fn describe_location_controls(
     entry: &impl IsA<gtk::Accessible>,
     confirm: &impl IsA<gtk::Accessible>,
     cancel: &impl IsA<gtk::Accessible>,
 ) {
-    set_label(entry, &crate::i18n::tr(LOCATION_LABEL));
-    set_label(confirm, &crate::i18n::tr(LOCATION_CONFIRM_LABEL));
-    set_label(cancel, &crate::i18n::tr(LOCATION_CANCEL_LABEL));
+    set_label(
+        entry,
+        &with_keys("Location (%{keys})", Keys::One(bindings::LOCATION)),
+    );
+    set_label(confirm, &location_confirm_label());
+    set_label(cancel, &location_cancel_label());
 }
 
 /// The name belongs on the list item rather than on the row content: the item

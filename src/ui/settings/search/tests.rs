@@ -354,7 +354,8 @@ fn global_search_routes_every_target_to_its_page() {
                 .expect("settings title");
             let mut failures = Vec::new();
             for target in TARGETS {
-                entry.set_text(target.title);
+                let shown_title = super::super::translated(target.title);
+                entry.set_text(&shown_title);
                 let mut fail = |problem: String| {
                     failures.push(format!("{:?} ({}): {problem}", target.title, target.id));
                 };
@@ -369,7 +370,7 @@ fn global_search_routes_every_target_to_its_page() {
                         title.text()
                     ));
                 }
-                let matches = find_matches(&normalized(target.title));
+                let matches = find_matches(&normalized(&shown_title));
                 for page in super::super::NAVIGATION.iter().map(|entry| entry.page) {
                     let visible = nav(&layer, page).is_visible();
                     if visible != matches.pages.contains(page) {

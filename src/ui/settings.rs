@@ -3092,6 +3092,27 @@ fn page_content() -> gtk::Box {
     content
 }
 
+/// Translates Settings copy, rendering the shortcuts it names.
+fn translated(message: &str) -> String {
+    translated_in(&rust_i18n::locale(), message)
+}
+
+fn translated_in(locale: &str, message: &str) -> String {
+    use super::keys::{
+        Keys::One,
+        bindings::{REFERENCE, SIDEBAR_FOCUS, TENXER_MODE},
+        label,
+    };
+    rust_i18n::t!(
+        message,
+        locale = locale,
+        reference_keys = label(&One(REFERENCE)),
+        sidebar_focus_keys = label(&One(SIDEBAR_FOCUS)),
+        tenxer_mode_keys = label(&One(TENXER_MODE))
+    )
+    .into_owned()
+}
+
 fn settings_option(title: &str, description: &str, active: bool) -> (gtk::Box, gtk::Switch) {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 16);
     search::tag(&row, title);
@@ -3099,12 +3120,12 @@ fn settings_option(title: &str, description: &str, active: bool) -> (gtk::Box, g
     let copy = gtk::Box::new(gtk::Orientation::Vertical, 2);
     copy.set_hexpand(true);
     copy.set_valign(gtk::Align::Center);
-    let title_label = gtk::Label::new(Some(&crate::i18n::tr(title)));
+    let title_label = gtk::Label::new(Some(&translated(title)));
     title_label.set_xalign(0.0);
     title_label.set_wrap(true);
     title_label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
     title_label.add_css_class("settings-option-title");
-    let description_label = gtk::Label::new(Some(&crate::i18n::tr(description)));
+    let description_label = gtk::Label::new(Some(&translated(description)));
     description_label.set_xalign(0.0);
     description_label.set_wrap(true);
     description_label.add_css_class("settings-option-description");
@@ -3117,8 +3138,8 @@ fn settings_option(title: &str, description: &str, active: bool) -> (gtk::Box, g
         .valign(gtk::Align::Center)
         .build();
     toggle.update_property(&[
-        gtk::accessible::Property::Label(&crate::i18n::tr(title)),
-        gtk::accessible::Property::Description(&crate::i18n::tr(description)),
+        gtk::accessible::Property::Label(&translated(title)),
+        gtk::accessible::Property::Description(&translated(description)),
     ]);
     row.append(&copy);
     row.append(&toggle);

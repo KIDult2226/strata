@@ -1533,10 +1533,16 @@ fn build_chooser_hosted(
     }
     let header = gtk::HeaderBar::new();
     header.set_show_title_buttons(false);
-    let sidebar_toggle = gtk::ToggleButton::builder()
-        .active(true)
-        .tooltip_text(crate::i18n::tr("Toggle sidebar (Ctrl+B)"))
-        .build();
+    let sidebar_toggle = gtk::ToggleButton::builder().active(true).build();
+    theme.bind_preference(
+        &sidebar_toggle,
+        PreferenceManager::tenxer_mode,
+        |toggle, tenxer| {
+            toggle.set_tooltip_text(Some(
+                &crate::ui::shortcut_reference::sidebar_toggle_tooltip(tenxer),
+            ));
+        },
+    );
     sidebar_toggle.set_child(Some(&crate::assets::primary_icon(
         crate::assets::icons::PANEL_LEFT,
         17,
@@ -1552,7 +1558,10 @@ fn build_chooser_hosted(
     header_content.append(&sidebar_toggle);
     header_content.append(&location);
     let close = gtk::Button::builder()
-        .tooltip_text(crate::i18n::tr("Cancel file selection (Esc)"))
+        .tooltip_text(crate::ui::shortcut_reference::with_keys(
+            "Cancel file selection (%{keys})",
+            crate::ui::keys::Keys::One(crate::ui::keys::bindings::ESCAPE),
+        ))
         .build();
     close.set_child(Some(&crate::assets::chrome_icon(crate::assets::icons::X)));
     close.add_css_class("header-action");
@@ -1718,7 +1727,10 @@ fn build_chooser_hosted(
     ) {
         crate::ui::accessibility::set_description(
             &accept,
-            Some(&crate::i18n::tr("Select folder (Ctrl+Enter)")),
+            Some(&crate::ui::shortcut_reference::with_keys(
+                "Select folder (%{keys})",
+                crate::ui::keys::Keys::One(crate::ui::keys::bindings::CHOOSE_FOLDER),
+            )),
         );
     }
     let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
@@ -2114,20 +2126,24 @@ fn apply_external_parent(window: &gtk::Window, parent: Option<&WindowIdentifierT
 }
 
 fn save_hints(kind: &ChooserKind, preferences: &Rc<PreferenceManager>) -> Option<gtk::Box> {
-    let hints: &[(&str, &str)] = match kind {
+    use crate::ui::keys::{
+        self, Binding, Keys,
+        bindings::{ENTER, OPEN, TENXER_RENAME},
+    };
+    let hints: &[(Binding, &str)] = match kind {
         ChooserKind::SaveFile { .. } => &[
-            ("Enter", "Save here"),
-            ("r", "Edit name"),
-            ("o", "Replace file"),
+            (ENTER, "Save here"),
+            (TENXER_RENAME, "Edit name"),
+            (OPEN, "Replace file"),
         ],
-        ChooserKind::SaveFiles { .. } => &[("Enter", "Save here")],
+        ChooserKind::SaveFiles { .. } => &[(ENTER, "Save here")],
         ChooserKind::Open { .. } => return None,
     };
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     row.add_css_class("chooser-save-hints");
     row.set_valign(gtk::Align::Center);
-    for (index, (key, action)) in hints.iter().enumerate() {
-        let keycap = gtk::Label::new(Some(key));
+    for (index, (binding, action)) in hints.iter().enumerate() {
+        let keycap = gtk::Label::new(Some(&keys::label(&Keys::One(*binding))));
         keycap.add_css_class("sidebar-keycap");
         if index > 0 {
             keycap.set_margin_start(10);

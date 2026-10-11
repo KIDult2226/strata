@@ -384,15 +384,34 @@ fn append_text_size_option(content: &gtk::Box, preferences: &Rc<PreferenceManage
     keys.set_halign(gtk::Align::Start);
     keys.set_hexpand(false);
     keys.set_valign(gtk::Align::Center);
-    for key in ["Ctrl", "+", "/", "−", "/", "0"] {
-        let label = gtk::Label::new(Some(key));
-        label.add_css_class("settings-nowrap");
-        label.add_css_class(if key == "/" {
-            "keycap-separator"
-        } else {
-            "settings-keycap"
-        });
-        keys.append(&label);
+    {
+        use crate::ui::keys::{
+            self as shortcuts, Binding, Keys,
+            bindings::{TEXT_LARGER, TEXT_RESET, TEXT_SMALLER},
+        };
+        let keycap = |text: &str, class| {
+            let label = gtk::Label::new(Some(text));
+            label.add_css_class("settings-nowrap");
+            label.add_css_class(class);
+            keys.append(&label);
+        };
+        // The three bindings share their modifiers, shown once.
+        keycap(
+            &shortcuts::modifiers_label(TEXT_LARGER.modifiers()),
+            "settings-keycap",
+        );
+        for (index, binding) in [TEXT_LARGER, TEXT_SMALLER, TEXT_RESET]
+            .into_iter()
+            .enumerate()
+        {
+            if index > 0 {
+                keycap("/", "keycap-separator");
+            }
+            keycap(
+                &shortcuts::label(&Keys::One(Binding::plain(binding.key()))),
+                "settings-keycap",
+            );
+        }
     }
     description.append(&keys);
     text_size_copy.append(&text_size_title);

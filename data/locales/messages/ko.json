@@ -587,7 +587,7 @@
   "Open the focused item": "포커스된 항목 열기",
   "Open the folder": "폴더 열기",
   "Open the next column for the focused directory": "포커스된 디렉터리를 다음 열에 열기",
-  "Opinionated keyboard-centric mode with Yazi-style navigation. Disables some features. Toggle with Ctrl-Shift-M.": "Yazi 방식 탐색을 사용하는 키보드 중심 모드입니다. 일부 기능이 비활성화됩니다. Ctrl-Shift-M으로 전환하세요.",
+  "Opinionated keyboard-centric mode with Yazi-style navigation. Disables some features. Toggle with %{tenxer_mode_keys}.": "Yazi 방식 탐색을 사용하는 키보드 중심 모드입니다. 일부 기능이 비활성화됩니다. %{tenxer_mode_keys} 키로 전환하세요.",
   "Other release channels are published as %{package}.": "다른 릴리스 채널은 %{package}(으)로 배포됩니다.",
   "PDF page text": "PDF 페이지 텍스트",
   "Parent pane / enter folder": "상위 열 / 폴더 들어가기",

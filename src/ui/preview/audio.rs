@@ -94,11 +94,20 @@ fn label(class: &str) -> gtk::Label {
     label
 }
 
-fn transport_button(icon: &str, name: &str, tooltip: &str) -> gtk::Button {
+/// `tooltip` names `binding` with `%{keys}`.
+fn transport_button(
+    icon: &str,
+    name: &str,
+    tooltip: &str,
+    binding: crate::ui::keys::Binding,
+) -> gtk::Button {
     let button = gtk::Button::new();
     button.add_css_class("preview-media-button");
     button.set_child(Some(&crate::assets::primary_icon(icon, 18)));
-    button.set_tooltip_text(Some(&crate::i18n::tr(tooltip)));
+    button.set_tooltip_text(Some(&crate::ui::shortcut_reference::with_keys(
+        tooltip,
+        crate::ui::keys::Keys::One(binding),
+    )));
     crate::ui::accessibility::set_label(&button, &crate::i18n::tr(name));
     button
 }
@@ -141,19 +150,24 @@ impl AudioView {
         let previous = transport_button(
             crate::assets::icons::SKIP_BACK,
             "Previous audio file",
-            "Previous audio file (Ctrl+Alt+<)",
+            "Previous audio file (%{keys})",
+            crate::ui::keys::bindings::MEDIA_PREVIOUS,
         );
         let next = transport_button(
             crate::assets::icons::SKIP_FORWARD,
             "Next audio file",
-            "Next audio file (Ctrl+Alt+>)",
+            "Next audio file (%{keys})",
+            crate::ui::keys::bindings::MEDIA_NEXT,
         );
         let play_icon = crate::assets::primary_icon(crate::assets::icons::PLAY, 22);
         let play = gtk::Button::new();
         play.add_css_class("preview-media-center");
         play.add_css_class("preview-audio-play");
         play.set_child(Some(&play_icon));
-        play.set_tooltip_text(Some(&crate::i18n::tr("Play/Pause (Ctrl+Alt+Space)")));
+        play.set_tooltip_text(Some(&crate::ui::shortcut_reference::with_keys(
+            "Play/Pause (%{keys})",
+            crate::ui::keys::Keys::One(crate::ui::keys::bindings::MEDIA_PLAY_PAUSE),
+        )));
         crate::ui::accessibility::set_label(&play, &crate::i18n::tr("Play or pause"));
         let buttons = gtk::Box::new(gtk::Orientation::Horizontal, 10);
         buttons.set_valign(gtk::Align::Center);

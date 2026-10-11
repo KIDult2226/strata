@@ -1245,7 +1245,7 @@ impl ViewState {
         header_actions.append(&column_sort_menu(&self.browser, depth));
 
         let (filter_entry, filter_revealer, filter_button) =
-            crate::ui::browser_modes::filter_controls("Filter this pane (Ctrl+F)");
+            crate::ui::browser_modes::filter_controls("Filter this pane (%{keys})");
         let weak_self = Rc::downgrade(self);
         filter_button.connect_toggled(move |button| {
             if button.is_active()

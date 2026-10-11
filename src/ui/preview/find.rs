@@ -317,6 +317,10 @@ impl PreviewDrawer {
         &self,
         preferences: &super::super::preferences::PreferenceManager,
     ) {
+        use super::super::keys::{
+            Keys,
+            bindings::{FIND_IN_PREVIEW, TENXER_FIND_IN_PREVIEW},
+        };
         let button = self.state.find_button.downgrade();
         preferences.bind_preference(
             &self.state.find_button,
@@ -325,9 +329,14 @@ impl PreviewDrawer {
                 let Some(button) = button.upgrade() else {
                     return;
                 };
+                let shortcut = if tenxer {
+                    TENXER_FIND_IN_PREVIEW
+                } else {
+                    FIND_IN_PREVIEW
+                };
                 let label = rust_i18n::t!(
                     "Find in preview (%{shortcut})",
-                    shortcut = if tenxer { "/" } else { "Ctrl+F" }
+                    shortcut = super::super::keys::label(&Keys::One(shortcut))
                 );
                 button.set_tooltip_text(Some(&label));
                 super::super::accessibility::set_label(&button, &label);

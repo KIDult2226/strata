@@ -157,7 +157,7 @@ def test_appearance_options_expose_the_chosen_option(strata, shortcut, option, r
     strata.open_appearance_menu()
     node = check(option, role, False, f"before {shortcut}")
     if option == "Hidden files" and node is not None:
-        assert node.description == "Ctrl + H"
+        assert node.description == "Ctrl+H"
     if previous is not None:
         check(previous, role, True, f"before {shortcut}")
     strata.keyboard.press("Escape")

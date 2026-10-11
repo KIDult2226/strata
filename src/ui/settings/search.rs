@@ -100,7 +100,7 @@ const TARGETS: &[Target] = &[
     Target {
         id: "hints",
         page: "general",
-        title: "Show F1 Shortcuts button",
+        title: "Show %{reference_keys} Shortcuts button",
         aliases: "browsing keyboard keybindings hints shortcuts reference help footer",
     },
     Target {
@@ -371,8 +371,8 @@ fn word_score(query: &str, word: &str) -> Option<i32> {
 }
 
 fn score(query: &str, target: &Target) -> Option<i32> {
-    let source_title = normalized(target.title);
-    let localized_title = normalized(&crate::i18n::tr(target.title));
+    let source_title = normalized(&super::translated_in("en", target.title));
+    let localized_title = normalized(&super::translated(target.title));
     let title = format!("{source_title} {localized_title}");
     let aliases = normalized(&format!(
         "{} {} {} {} settings {}",

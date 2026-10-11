@@ -242,11 +242,14 @@ fn date_format_label(format: crate::util::DateFormat) -> &'static str {
 }
 
 fn append_thumbnail_workers_option(content: &gtk::Box, manager: &Rc<PreferenceManager>) {
-    let (control, [decrease, reset, increase]) = crate::ui::controls::stepper([
-        "Decrease thumbnail workers",
-        "Reset thumbnail workers",
-        "Increase thumbnail workers",
-    ]);
+    let (control, [decrease, reset, increase]) = crate::ui::controls::stepper(
+        [
+            "Decrease thumbnail workers",
+            "Reset thumbnail workers",
+            "Increase thumbnail workers",
+        ]
+        .map(crate::i18n::tr),
+    );
     for (button, increase) in [(decrease, false), (increase, true)] {
         manager.bind_preference(
             &button,
@@ -327,7 +330,7 @@ fn append_browsing_options(content: &gtk::Box, manager: &Rc<PreferenceManager>) 
         },
         PreferenceSwitch {
             title: "Keep arrows in file list",
-            description: "Stop arrow keys from leaving the file list. Use Ctrl + Shift + B to focus the sidebar, or use the mouse.",
+            description: "Stop arrow keys from leaving the file list. Use %{sidebar_focus_keys} to focus the sidebar, or use the mouse.",
             read: PreferenceManager::arrow_navigation_scoped,
             write: PreferenceManager::set_arrow_navigation_scoped,
         },
@@ -344,8 +347,8 @@ fn append_browsing_options(content: &gtk::Box, manager: &Rc<PreferenceManager>) 
             write: PreferenceManager::set_tenxer_mode,
         },
         PreferenceSwitch {
-            title: "Show F1 Shortcuts button",
-            description: "Show the shortcuts button in the bottom bar. Item counts and clipboard status remain visible when the button is hidden. F1 always opens the full reference.",
+            title: "Show %{reference_keys} Shortcuts button",
+            description: "Show the shortcuts button in the bottom bar. Item counts and clipboard status remain visible when the button is hidden. %{reference_keys} always opens the full reference.",
             read: PreferenceManager::show_keybinding_hints,
             write: PreferenceManager::set_show_keybinding_hints,
         },
@@ -521,7 +524,7 @@ fn bind_tenxer_unused_subtitle(
         PreferenceManager::tenxer_mode,
         move |widget, enabled| {
             if let Some(label) = widget.downcast_ref::<gtk::Label>() {
-                label.set_text(&crate::i18n::tr(if enabled { unused } else { normal }));
+                label.set_text(&super::translated(if enabled { unused } else { normal }));
                 label.set_visible(true);
             }
         },

@@ -2143,6 +2143,7 @@ struct IconsControls {
     empty_trash_button: Option<gtk::Button>,
 }
 
+/// `tooltip` names the filter shortcut with `%{keys}`.
 pub(crate) fn filter_controls(tooltip: &str) -> (gtk::Entry, gtk::Revealer, gtk::ToggleButton) {
     let entry = gtk::Entry::builder()
         .placeholder_text(super::browser::filter_placeholder(0))
@@ -2159,7 +2160,10 @@ pub(crate) fn filter_controls(tooltip: &str) -> (gtk::Entry, gtk::Revealer, gtk:
         .child(&row)
         .build();
     let button = gtk::ToggleButton::builder()
-        .tooltip_text(crate::i18n::tr(tooltip))
+        .tooltip_text(super::shortcut_reference::with_keys(
+            tooltip,
+            super::keys::Keys::One(super::keys::bindings::FILTER),
+        ))
         .build();
     button.set_child(Some(&crate::assets::chrome_icon(
         crate::assets::icons::FUNNEL,
@@ -2254,7 +2258,7 @@ fn icons_controls(browser: &Rc<Browser>, depth: usize, thumbnail_size: i32) -> I
     actions.append(&sort_direction_button);
     actions.append(&super::browser::column_sort_menu(browser, depth));
 
-    let (filter_entry, filter_revealer, filter_button) = filter_controls("Filter icons (Ctrl+F)");
+    let (filter_entry, filter_revealer, filter_button) = filter_controls("Filter icons (%{keys})");
     actions.append(&filter_button);
     IconsControls {
         sort_direction_button,
@@ -3282,30 +3286,40 @@ fn list_cell_content_width(cell: &gtk::Widget) -> i32 {
 }
 
 fn list_navigation(browser: &Rc<Browser>) -> gtk::Box {
+    use super::keys::{
+        Keys,
+        bindings::{HISTORY_BACK, HISTORY_FORWARD, PARENT_FOLDER},
+    };
     let actions = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     actions.add_css_class("list-navigation");
-    for (icon, tooltip, action, available) in [
+    for (icon, tooltip, binding, action, available) in [
         (
             crate::assets::icons::ARROW_LEFT,
-            "Back (Alt+Left)",
+            "Back (%{keys})",
+            HISTORY_BACK,
             Browser::back as fn(&Rc<Browser>),
             browser.can_go_back(),
         ),
         (
             crate::assets::icons::ARROW_RIGHT,
-            "Forward (Alt+Right)",
+            "Forward (%{keys})",
+            HISTORY_FORWARD,
             Browser::forward as fn(&Rc<Browser>),
             browser.can_go_forward(),
         ),
         (
             crate::assets::icons::ARROW_UP,
-            "Parent folder (Alt+Up)",
+            "Parent folder (%{keys})",
+            PARENT_FOLDER,
             Browser::parent as fn(&Rc<Browser>),
             browser.can_go_parent(),
         ),
     ] {
         let button = gtk::Button::builder()
-            .tooltip_text(crate::i18n::tr(tooltip))
+            .tooltip_text(super::shortcut_reference::with_keys(
+                tooltip,
+                Keys::One(binding),
+            ))
             .sensitive(available)
             .build();
         button.set_child(Some(&crate::assets::chrome_icon(icon)));
@@ -3364,7 +3378,7 @@ fn build_list_pane(
     if camera_photos || recent {
         actions.append(&super::browser::column_sort_menu(&browser, depth));
     }
-    let (filter_entry, filter_revealer, filter_button) = filter_controls("Filter list (Ctrl+F)");
+    let (filter_entry, filter_revealer, filter_button) = filter_controls("Filter list (%{keys})");
     actions.append(&filter_button);
     let columns = ListColumnLayout::new(&browser);
     let (shell, header, content, model, stack, status, spinner, truncated_hint) = pane_base(

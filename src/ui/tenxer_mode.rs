@@ -6,7 +6,7 @@ use gtk::prelude::*;
 
 use super::preferences::PreferenceManager;
 
-pub(crate) const MODE_DESCRIPTION: &str = "Opinionated keyboard-centric mode with Yazi-style navigation. Disables some features. Toggle with Ctrl-Shift-M.";
+pub(crate) const MODE_DESCRIPTION: &str = "Opinionated keyboard-centric mode with Yazi-style navigation. Disables some features. Toggle with %{tenxer_mode_keys}.";
 pub(crate) const UNUSED_SUBTITLE: &str = "Not used in 10xer mode.";
 pub(crate) const TAG_TEXT: &str = "10X";
 pub(crate) const TAG_NAME: &str = "10xer mode";

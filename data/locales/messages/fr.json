@@ -587,7 +587,7 @@
   "Open the focused item": "Ouvrir l’élément actif",
   "Open the folder": "Ouvrir le dossier",
   "Open the next column for the focused directory": "Ouvrir la colonne suivante pour le dossier actif",
-  "Opinionated keyboard-centric mode with Yazi-style navigation. Disables some features. Toggle with Ctrl-Shift-M.": "Mode orienté clavier avec navigation de type Yazi. Désactive certaines fonctions. Activer ou désactiver avec Ctrl-Shift-M.",
+  "Opinionated keyboard-centric mode with Yazi-style navigation. Disables some features. Toggle with %{tenxer_mode_keys}.": "Mode orienté clavier avec navigation de type Yazi. Désactive certaines fonctions. Activer ou désactiver avec %{tenxer_mode_keys}.",
   "Other release channels are published as %{package}.": "Les autres canaux de publication sont distribués sous le nom %{package}.",
   "PDF page text": "Texte de la page PDF",
   "Parent pane / enter folder": "Volet parent / entrer dans le dossier",

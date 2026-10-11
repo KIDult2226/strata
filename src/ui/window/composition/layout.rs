@@ -46,10 +46,16 @@ impl Header {
         let widget = gtk::HeaderBar::new();
         widget.add_css_class("browser-header");
         widget.set_show_title_buttons(false);
-        let sidebar_toggle = gtk::ToggleButton::builder()
-            .active(true)
-            .tooltip_text(crate::i18n::tr("Toggle sidebar (Ctrl+B)"))
-            .build();
+        let sidebar_toggle = gtk::ToggleButton::builder().active(true).build();
+        preferences.bind_preference(
+            &sidebar_toggle,
+            PreferenceManager::tenxer_mode,
+            |toggle, tenxer| {
+                toggle.set_tooltip_text(Some(
+                    &crate::ui::shortcut_reference::sidebar_toggle_tooltip(tenxer),
+                ));
+            },
+        );
         sidebar_toggle.set_child(Some(&assets::primary_icon(icons::PANEL_LEFT, 17)));
         sidebar_toggle.add_css_class("sidebar-toggle");
         sidebar_toggle.set_cursor_from_name(Some("pointer"));
@@ -73,7 +79,13 @@ impl Header {
         }
         let location = browser.location_widget();
         location.set_hexpand(true);
-        let search = header_action(icons::SEARCH, &crate::i18n::tr("Search (Ctrl+K)"));
+        let search = header_action(
+            icons::SEARCH,
+            &crate::ui::shortcut_reference::with_keys(
+                "Search (%{keys})",
+                crate::ui::keys::Keys::One(crate::ui::keys::bindings::SEARCH),
+            ),
+        );
         crate::ui::tenxer_mode::hide_while_enabled(&search);
         let appearance =
             build_appearance_menu(browser, &browser.browser(), preferences.clone(), preview);
@@ -120,7 +132,13 @@ impl Header {
         }
         let actions = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         actions.add_css_class("header-actions");
-        let new_tab = header_action(icons::PLUS, &crate::i18n::tr("New tab (Ctrl+T)"));
+        let new_tab = header_action(
+            icons::PLUS,
+            &crate::ui::shortcut_reference::with_keys(
+                "New tab (%{keys})",
+                crate::ui::keys::Keys::One(crate::ui::keys::bindings::TAB_NEW),
+            ),
+        );
         crate::ui::accessibility::set_label(&new_tab, &crate::i18n::tr("New tab"));
         actions.append(&new_tab);
         actions.append(&search);

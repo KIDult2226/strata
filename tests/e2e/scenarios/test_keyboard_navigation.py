@@ -160,7 +160,7 @@ def test_tenxer_sidebar_and_header_round_trips(strata):
         strata.select_entry("readme.md")
         strata.wait_for_focused_entry("readme.md")
 
-        toggle = strata.window.find(name="Toggle sidebar (Ctrl+B)")
+        toggle = strata.window.find(name="Toggle sidebar (Ctrl+N)")
         assert toggle is not None, "sidebar toggle"
         strata.keyboard.press("Tab")
         strata.wait(lambda: toggle.has_state("focused"), "Tab to focus the sidebar toggle")

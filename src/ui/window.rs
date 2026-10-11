@@ -858,11 +858,20 @@ pub(super) fn build_appearance_menu(
     let sample = gtk::Label::new(Some("Aa"));
     sample.add_css_class("appearance-text-sample");
     text_controls.append(&sample);
-    let (stepper, [decrease, reset_size, increase]) = super::controls::stepper([
-        "Decrease text size (Ctrl+−)",
-        "Reset text size (Ctrl+0)",
-        "Increase text size (Ctrl++)",
-    ]);
+    let (stepper, [decrease, reset_size, increase]) = {
+        use super::{
+            keys::{
+                Keys,
+                bindings::{TEXT_LARGER, TEXT_RESET, TEXT_SMALLER},
+            },
+            shortcut_reference::with_keys,
+        };
+        super::controls::stepper([
+            with_keys("Decrease text size (%{keys})", Keys::One(TEXT_SMALLER)),
+            with_keys("Reset text size (%{keys})", Keys::One(TEXT_RESET)),
+            with_keys("Increase text size (%{keys})", Keys::One(TEXT_LARGER)),
+        ])
+    };
     text_controls.append(&stepper);
     for (button, delta) in [(decrease, -1), (increase, 1)] {
         let manager = preferences.clone();
@@ -888,7 +897,7 @@ pub(super) fn build_appearance_menu(
             crate::assets::icons::EYE_OFF
         },
         "Hidden files",
-        "Ctrl + H",
+        &super::keys::label(&super::keys::Keys::One(super::keys::bindings::HIDDEN_FILES)),
         hidden_files_shown,
         true,
         gtk::AccessibleRole::MenuItemCheckbox,
@@ -1414,7 +1423,7 @@ impl SidebarState {
                     &crate::i18n::tr("Home"),
                     location.clone(),
                 );
-                self.add_keycap(&row, "h");
+                self.add_keycap(&row, &place_keycap(super::keys::bindings::GO_HOME));
                 if !self.local_only {
                     self.attach_place_context_menu(&row, location, |state| {
                         state.preference_manager.set_sidebar_show_home(false);
@@ -1437,7 +1446,7 @@ impl SidebarState {
                     &crate::i18n::tr("Network"),
                     location.clone(),
                 );
-                self.add_keycap(&row, "n");
+                self.add_keycap(&row, &place_keycap(super::keys::bindings::GO_NETWORK));
                 self.attach_place_context_menu(&row, location, |state| {
                     state.preference_manager.set_sidebar_show_network(false);
                 });
@@ -1477,8 +1486,8 @@ impl SidebarState {
                     Location::local(path),
                 )
             };
-            if let Some(key) = standard_place_chord_key(place) {
-                self.add_keycap(&row, key);
+            if let Some(step) = standard_place_chord_key(place) {
+                self.add_keycap(&row, &place_keycap(step));
             }
         }
     }
@@ -1507,8 +1516,8 @@ impl SidebarState {
                 } else {
                     self.append_pinned_place(index, &name, location)
                 };
-                if let Some(key) = PIN_CHORD_KEYS.get(ordinal) {
-                    self.add_keycap(&row, key);
+                if let Some(keycap) = pin_keycap(ordinal) {
+                    self.add_keycap(&row, &keycap);
                 }
             }
         }
@@ -1797,7 +1806,7 @@ impl SidebarState {
         let location = Location::uri("recent:///");
         let row = sidebar_button(crate::assets::icons::CLOCK, &crate::i18n::tr("Recent"));
         crate::ui::accessibility::set_description(&row, Some("recent:///"));
-        self.add_keycap(&row, "r");
+        self.add_keycap(&row, &place_keycap(super::keys::bindings::GO_RECENT));
         self.bind_place_row(&row, location, PlaceNavigation::Direct);
         self.make_place_reorderable(&row, "recent");
         self.widget.append(&row);
@@ -1807,7 +1816,7 @@ impl SidebarState {
         let location = Location::uri("trash:///");
         let row = sidebar_button(crate::assets::icons::TRASH, &crate::i18n::tr("Trash"));
         crate::ui::accessibility::set_description(&row, Some("trash:///"));
-        self.add_keycap(&row, "t");
+        self.add_keycap(&row, &place_keycap(super::keys::bindings::GO_TRASH));
         self.bind_place_row(&row, location, PlaceNavigation::Direct);
 
         let menu = super::accessibility::menu_box();
@@ -3579,15 +3588,28 @@ fn resolve_place_order(persisted: &[String]) -> Vec<&'static str> {
     order
 }
 
-const PIN_CHORD_KEYS: [&str; 9] = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
+/// The second key of the **g** chord that opens a place.
+fn place_keycap(step: super::keys::Binding) -> String {
+    super::keys::label(&super::keys::Keys::One(step))
+}
 
-fn standard_place_chord_key(id: &str) -> Option<&'static str> {
+/// The pin number of the visible PINNED row at `ordinal`, while one exists.
+fn pin_keycap(ordinal: usize) -> Option<String> {
+    use super::keys::bindings::PIN_NUMBERS;
+    let pin = u8::try_from(ordinal + 1)
+        .ok()
+        .filter(|pin| PIN_NUMBERS.contains(*pin))?;
+    Some(super::keys::digit_label(PIN_NUMBERS.step(), pin))
+}
+
+fn standard_place_chord_key(id: &str) -> Option<super::keys::Binding> {
+    use super::keys::bindings::{GO_DOCUMENTS, GO_DOWNLOADS, GO_MUSIC, GO_PICTURES, GO_VIDEOS};
     match id {
-        "documents" => Some("k"),
-        "downloads" => Some("d"),
-        "music" => Some("m"),
-        "pictures" => Some("p"),
-        "videos" => Some("v"),
+        "documents" => Some(GO_DOCUMENTS),
+        "downloads" => Some(GO_DOWNLOADS),
+        "music" => Some(GO_MUSIC),
+        "pictures" => Some(GO_PICTURES),
+        "videos" => Some(GO_VIDEOS),
         _ => None,
     }
 }

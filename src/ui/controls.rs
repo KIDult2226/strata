@@ -4,18 +4,19 @@ use std::{cell::Cell, ops::Range, rc::Rc, time::Duration};
 
 use gtk::prelude::*;
 
-pub(super) fn stepper(labels: [&str; 3]) -> (gtk::Box, [gtk::Button; 3]) {
+/// `labels` are already translated: decrease, the value, increase.
+pub(super) fn stepper(labels: [String; 3]) -> (gtk::Box, [gtk::Button; 3]) {
     let control = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     control.add_css_class("appearance-text-stepper");
     control.set_hexpand(true);
     control.set_halign(gtk::Align::End);
     let buttons = std::array::from_fn(|index| {
-        let label = crate::i18n::tr(labels[index]);
+        let label = &labels[index];
         let button = gtk::Button::new();
         if index == 1 {
             button.add_css_class("appearance-text-value");
             button.set_hexpand(true);
-            super::accessibility::set_description(&button, Some(&label));
+            super::accessibility::set_description(&button, Some(label));
         } else {
             let icon = if index == 0 {
                 crate::assets::icons::MINUS
@@ -27,8 +28,8 @@ pub(super) fn stepper(labels: [&str; 3]) -> (gtk::Box, [gtk::Button; 3]) {
             image.set_valign(gtk::Align::Center);
             button.set_child(Some(&image));
             button.add_css_class("appearance-text-step");
-            super::accessibility::set_label(&button, &label);
-            button.set_tooltip_text(Some(&label));
+            super::accessibility::set_label(&button, label);
+            button.set_tooltip_text(Some(label));
         }
         control.append(&button);
         button
