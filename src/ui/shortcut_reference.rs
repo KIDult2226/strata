@@ -67,9 +67,13 @@ pub(crate) enum Mention {
 
 impl Mention {
     pub(crate) fn label(self) -> String {
+        self.label_in(&rust_i18n::locale())
+    }
+
+    fn label_in(self, locale: &str) -> String {
         match self {
-            Self::Keys(keys) => keys::label(&keys),
-            Self::Held(modifiers) => keys::modifiers_label(modifiers),
+            Self::Keys(keys) => keys::label_in(locale, &keys),
+            Self::Held(modifiers) => keys::modifiers_label_in(locale, modifiers),
         }
     }
 }
@@ -110,9 +114,12 @@ impl Shortcut {
 
     fn action_in(&self, locale: &str) -> String {
         match self.mention {
-            Some(mention) => {
-                rust_i18n::t!(self.action, locale = locale, keys = mention.label()).into_owned()
-            }
+            Some(mention) => rust_i18n::t!(
+                self.action,
+                locale = locale,
+                keys = mention.label_in(locale)
+            )
+            .into_owned(),
             None => rust_i18n::t!(self.action, locale = locale).into_owned(),
         }
     }

@@ -3101,14 +3101,14 @@ fn translated_in(locale: &str, message: &str) -> String {
     use super::keys::{
         Keys::One,
         bindings::{REFERENCE, SIDEBAR_FOCUS, TENXER_MODE},
-        label,
+        label_in,
     };
     rust_i18n::t!(
         message,
         locale = locale,
-        reference_keys = label(&One(REFERENCE)),
-        sidebar_focus_keys = label(&One(SIDEBAR_FOCUS)),
-        tenxer_mode_keys = label(&One(TENXER_MODE))
+        reference_keys = label_in(locale, &One(REFERENCE)),
+        sidebar_focus_keys = label_in(locale, &One(SIDEBAR_FOCUS)),
+        tenxer_mode_keys = label_in(locale, &One(TENXER_MODE))
     )
     .into_owned()
 }

@@ -16,7 +16,9 @@ mod label;
 #[cfg(test)]
 mod tests;
 
-pub(crate) use label::{Digits, Keys, digit_label, label, label_in, modifiers_label, search_text};
+pub(crate) use label::{
+    Digits, Keys, digit_label, label, label_in, modifiers_label, modifiers_label_in, search_text,
+};
 
 /// The modifiers shortcuts compare. Locks, AltGr, Hyper and Meta never count.
 pub(crate) const SHORTCUT_MODIFIERS: Modifiers = Modifiers::CONTROL_MASK

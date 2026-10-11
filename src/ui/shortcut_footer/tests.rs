@@ -313,6 +313,17 @@ fn localized_reference_names_keys_in_the_interface_language() {
                 "English key names find their German labels: {matches:?}"
             );
             assert!(!matches.iter().any(|label| label == "d / Entf"));
+            footer.search.set_text("shift");
+            settle();
+            let matches = reference_labels(&footer);
+            assert!(
+                reference_pairs(
+                    &matches,
+                    ", a / , m / , s / , e",
+                    "Nach Name / Änderung / Größe / Typ sortieren; Umschalt kehrt die Reihenfolge um"
+                ),
+                "English key names find keys named in German action text: {matches:?}"
+            );
         },
     );
 }
