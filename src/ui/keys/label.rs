@@ -1,0 +1,220 @@
+// SPDX-License-Identifier: MIT
+
+use gtk::gdk::{Key, ModifierType as Modifiers};
+
+use super::Binding;
+
+/// What a shortcut row or hint shows. Never free text.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Keys {
+    /// One binding: **Ctrl+C**.
+    One(Binding),
+    /// Alternatives: **F2 / Ctrl+R**.
+    Any(&'static [Binding]),
+    /// A sequence: **g h**.
+    Chord(&'static [Binding]),
+    /// A digit range: **Ctrl+Shift+1–9 / 0**, **t 1–9 / t 0**.
+    Digits(Digits),
+    /// Alternatives that mix the shapes above: **g g / Home**.
+    Mixed(&'static [Keys]),
+}
+
+/// Digit-row keys 1 to `last`, and 0 when `zero`, with shared modifiers or
+/// after a chord prefix.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Digits {
+    prefix: Option<Binding>,
+    modifiers: Modifiers,
+    last: u8,
+    zero: bool,
+}
+
+impl Digits {
+    pub(crate) const fn new(modifiers: Modifiers, last: u8, zero: bool) -> Self {
+        Self {
+            prefix: None,
+            modifiers,
+            last,
+            zero,
+        }
+    }
+
+    pub(crate) const fn after(prefix: Binding, last: u8, zero: bool) -> Self {
+        Self {
+            prefix: Some(prefix),
+            modifiers: Modifiers::empty(),
+            last,
+            zero,
+        }
+    }
+
+    /// The modifiers held with the digit; none after a chord prefix.
+    pub(crate) const fn modifiers(self) -> Modifiers {
+        self.modifiers
+    }
+
+    pub(crate) const fn prefix(self) -> Option<Binding> {
+        self.prefix
+    }
+
+    pub(crate) fn contains(self, digit: u8) -> bool {
+        (1..=self.last).contains(&digit) || (digit == 0 && self.zero)
+    }
+}
+
+/// The label in the interface language.
+pub(crate) fn label(keys: &Keys) -> String {
+    label_in(&rust_i18n::locale(), keys)
+}
+
+/// Searchable text: the label in the interface language and in English, so
+/// either spelling finds a shortcut.
+pub(crate) fn search_text(keys: &Keys) -> String {
+    let local = label(keys);
+    let english = label_in("en", keys);
+    if local == english {
+        local
+    } else {
+        format!("{local} {english}")
+    }
+}
+
+/// Held modifiers alone, such as **Ctrl+Shift** in "hold Ctrl+Shift for numbers".
+pub(crate) fn modifiers_label(modifiers: Modifiers) -> String {
+    modifier_names(&rust_i18n::locale(), modifiers).join("+")
+}
+
+pub(crate) fn label_in(locale: &str, keys: &Keys) -> String {
+    match keys {
+        Keys::One(binding) => binding_label(locale, *binding),
+        Keys::Any(bindings) => alternatives(locale, bindings),
+        Keys::Chord(bindings) => bindings
+            .iter()
+            .map(|binding| binding_label(locale, *binding))
+            .collect::<Vec<_>>()
+            .join(" "),
+        Keys::Digits(digits) => digits_label(locale, digits),
+        Keys::Mixed(keys) => keys
+            .iter()
+            .map(|keys| label_in(locale, keys))
+            .collect::<Vec<_>>()
+            .join(" / "),
+    }
+}
+
+/// Alternatives that share their modifiers write them once (**Ctrl+Alt+← / →**),
+/// unless a key is a letter, which alone would read as a plain key.
+fn alternatives(locale: &str, bindings: &[Binding]) -> String {
+    let Some(first) = bindings.first() else {
+        return String::new();
+    };
+    let shared = !first.modifiers().is_empty()
+        && bindings.iter().all(|binding| {
+            binding.modifiers() == first.modifiers() && letter(binding.key()).is_none()
+        });
+    if shared {
+        let keys = bindings
+            .iter()
+            .map(|binding| key_name(locale, binding.key()))
+            .collect::<Vec<_>>()
+            .join(" / ");
+        return with_modifiers(locale, first.modifiers(), &keys);
+    }
+    bindings
+        .iter()
+        .map(|binding| binding_label(locale, *binding))
+        .collect::<Vec<_>>()
+        .join(" / ")
+}
+
+fn digits_label(locale: &str, digits: &Digits) -> String {
+    let range = format!("1\u{2013}{}", digits.last);
+    match digits.prefix {
+        Some(prefix) => {
+            let prefix = binding_label(locale, prefix);
+            if digits.zero {
+                format!("{prefix} {range} / {prefix} 0")
+            } else {
+                format!("{prefix} {range}")
+            }
+        }
+        None => {
+            let keys = if digits.zero {
+                format!("{range} / 0")
+            } else {
+                range
+            };
+            with_modifiers(locale, digits.modifiers, &keys)
+        }
+    }
+}
+
+fn binding_label(locale: &str, binding: Binding) -> String {
+    let modifiers = binding.modifiers();
+    if let Some(letter) = letter(binding.key()) {
+        // Without other modifiers a letter appears as typed: j, and J for Shift+j.
+        if modifiers.is_empty() {
+            return letter.to_string();
+        }
+        if modifiers == Modifiers::SHIFT_MASK {
+            return letter.to_ascii_uppercase().to_string();
+        }
+        return with_modifiers(locale, modifiers, &letter.to_ascii_uppercase().to_string());
+    }
+    with_modifiers(locale, modifiers, &key_name(locale, binding.key()))
+}
+
+fn with_modifiers(locale: &str, modifiers: Modifiers, keys: &str) -> String {
+    let mut parts = modifier_names(locale, modifiers);
+    parts.push(keys.to_owned());
+    parts.join("+")
+}
+
+fn modifier_names(locale: &str, modifiers: Modifiers) -> Vec<String> {
+    [
+        (Modifiers::CONTROL_MASK, "keys.name.ctrl"),
+        (Modifiers::ALT_MASK, "keys.name.alt"),
+        (Modifiers::SHIFT_MASK, "keys.name.shift"),
+        (Modifiers::SUPER_MASK, "keys.name.super"),
+    ]
+    .into_iter()
+    .filter(|(modifier, _)| modifiers.contains(*modifier))
+    .map(|(_, name)| rust_i18n::t!(name, locale = locale).into_owned())
+    .collect()
+}
+
+fn letter(key: Key) -> Option<char> {
+    key.to_unicode()
+        .filter(|character| character.is_ascii_lowercase())
+}
+
+fn key_name(locale: &str, key: Key) -> String {
+    let name = match key {
+        Key::Up => return "↑".to_owned(),
+        Key::Down => return "↓".to_owned(),
+        Key::Left => return "←".to_owned(),
+        Key::Right => return "→".to_owned(),
+        Key::minus => return "\u{2212}".to_owned(),
+        Key::Return => "keys.name.enter",
+        Key::Escape => "keys.name.escape",
+        Key::Delete => "keys.name.delete",
+        Key::BackSpace => "keys.name.backspace",
+        Key::Tab => "keys.name.tab",
+        Key::space => "keys.name.space",
+        Key::Page_Up => "keys.name.page_up",
+        Key::Page_Down => "keys.name.page_down",
+        Key::Home => "keys.name.home",
+        Key::End => "keys.name.end",
+        Key::Insert => "keys.name.insert",
+        Key::Menu => "keys.name.menu",
+        _ => {
+            return key
+                .to_unicode()
+                .filter(|character| character.is_ascii_graphic())
+                .map(|character| character.to_ascii_uppercase().to_string())
+                .or_else(|| key.name().map(Into::into))
+                .unwrap_or_default();
+        }
+    };
+    rust_i18n::t!(name, locale = locale).into_owned()
+}

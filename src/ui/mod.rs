@@ -22,6 +22,7 @@ mod icons_cell;
 mod inline_search;
 mod input_ownership;
 mod jobs;
+mod keys;
 mod loading_skeleton;
 mod marquee;
 mod media;
