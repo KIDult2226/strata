@@ -53,10 +53,6 @@ impl Digits {
         self.modifiers
     }
 
-    pub(crate) const fn prefix(self) -> Option<Binding> {
-        self.prefix
-    }
-
     /// The digits alone, as a panel or badge lists them while the prefix or
     /// modifiers are held. Handlers match the full range.
     pub(crate) const fn step(self) -> Self {

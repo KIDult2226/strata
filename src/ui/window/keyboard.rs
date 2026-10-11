@@ -148,7 +148,7 @@ pub(in crate::ui) fn edit_focused_text(window: &gtk::Window, press: &KeyPress) -
         (REDO, "text.redo"),
         (REDO_Y, "text.redo"),
     ];
-    if !press.from_fallback() {
+    if !press.used_fallback() {
         return Propagation::Proceed;
     }
     let focused = gtk::prelude::RootExt::focus(window)

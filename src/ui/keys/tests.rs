@@ -392,7 +392,7 @@ fn altgr_characters_never_fall_back() {
         (Key::onesuperior, NONE),
         NONE,
     );
-    assert!(!superscript.from_fallback());
+    assert!(!superscript.used_fallback());
     assert_eq!(superscript.text(), Some('¹'));
 }
 
@@ -563,7 +563,7 @@ fn signals_without_an_event_read_as_us_presses() {
     );
     let typed = KeyPress::from_signal(Key::Cyrillic_es, 0, NONE);
     assert_eq!(typed.text(), Some('с'));
-    assert!(!typed.from_fallback());
+    assert!(!typed.used_fallback());
 }
 
 mod labels {

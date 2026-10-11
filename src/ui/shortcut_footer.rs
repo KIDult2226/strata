@@ -1550,7 +1550,7 @@ impl ShortcutFooter {
         super::preferences::PreferenceManager::shared().tenxer_mode()
             && press.is(TENXER_REFERENCE)
             && (reference_open || !self.prompt_has_focus())
-            && !(press.from_fallback() && self.typing_has_focus())
+            && !(press.used_fallback() && self.typing_has_focus())
     }
 
     fn typing_has_focus(&self) -> bool {

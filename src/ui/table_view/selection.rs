@@ -471,7 +471,7 @@ fn run_focused_cell_action(
 ) -> glib::Propagation {
     let Some((_, action)) = CELL_ACTIONS
         .iter()
-        .find(|(binding, _)| press.from_fallback() && press.is(*binding))
+        .find(|(binding, _)| press.used_fallback() && press.is(*binding))
     else {
         return glib::Propagation::Proceed;
     };

@@ -95,7 +95,7 @@ impl Binding {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct KeyPress {
     key: Key,
-    modifiers: Modifiers,
+    shortcut_modifiers: Modifiers,
     state: Modifiers,
     typed: Key,
     digit: Option<u8>,
@@ -113,7 +113,8 @@ impl KeyPress {
                 self.digit == Some(digit) && self.state & compared == binding.modifiers & compared
             }
             None => {
-                self.key == binding.key && self.modifiers & compared == binding.modifiers & compared
+                self.key == binding.key
+                    && self.shortcut_modifiers & compared == binding.modifiers & compared
             }
         }
     }
@@ -168,7 +169,7 @@ impl KeyPress {
 
     /// Whether the key came from another layout or the US-QWERTY table, which
     /// GTK's own bindings may not recognize.
-    pub(crate) fn from_fallback(&self) -> bool {
+    pub(crate) fn used_fallback(&self) -> bool {
         self.fallback
     }
 
@@ -177,7 +178,7 @@ impl KeyPress {
     pub(crate) fn read_as(self, binding: Binding) -> Self {
         Self {
             key: binding.key,
-            modifiers: binding.modifiers,
+            shortcut_modifiers: binding.modifiers,
             ..self
         }
     }
@@ -377,7 +378,7 @@ where
     }
     KeyPress {
         key: main_key(key),
-        modifiers,
+        shortcut_modifiers: modifiers,
         state,
         typed: event.typed,
         digit: position_digit(event.keycode, event.typed),
