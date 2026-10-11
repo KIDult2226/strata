@@ -9,9 +9,9 @@ use crate::ui::browser::entry::{entry_icon, format_file_size};
 use crate::ui::browser::paths::{PinAction, compact_display_path, is_trash_root, pin_action_for};
 use crate::ui::browser::{PinStatus, ViewState};
 use crate::ui::controls::{ModalTone, form_check_button, modal_layout, properties_action};
-use crate::ui::keys::{self, bindings::ESCAPE_ANY};
 use crate::ui::modal::{
-    ModalHost, dismiss_modal_layer, modal_layer, remember_modal_focus, show_error_dialog,
+    ModalHost, close_on_escape, dismiss_modal_layer, modal_layer, remember_modal_focus,
+    show_error_dialog,
 };
 use gtk::prelude::*;
 use gtk::{gio, glib};
@@ -802,19 +802,12 @@ impl ViewState {
                 button.set_label(&crate::i18n::tr("Copied"));
             }
         });
-        let escape = gtk::EventControllerKey::new();
         let escaped_layer = layer.clone();
         let escaped_overlay = window_overlay.clone();
         let escaped_root = blurred_root.clone();
-        keys::on_press(&escape, move |_, press| {
-            if press.is(ESCAPE_ANY) {
-                dismiss_modal_layer(&escaped_layer, &escaped_overlay, escaped_root.as_ref());
-                glib::Propagation::Stop
-            } else {
-                glib::Propagation::Proceed
-            }
+        close_on_escape(&layer, move || {
+            dismiss_modal_layer(&escaped_layer, &escaped_overlay, escaped_root.as_ref());
         });
-        layer.add_controller(escape);
         layer.grab_focus();
 
         if measuring_directory {
@@ -942,19 +935,12 @@ impl ViewState {
         close.connect_clicked(move |_| {
             dismiss_modal_layer(&closing_layer, &closing_overlay, closing_root.as_ref());
         });
-        let escape = gtk::EventControllerKey::new();
         let escaped_layer = layer.clone();
         let escaped_overlay = window_overlay.clone();
         let escaped_root = blurred_root.clone();
-        keys::on_press(&escape, move |_, press| {
-            if press.is(ESCAPE_ANY) {
-                dismiss_modal_layer(&escaped_layer, &escaped_overlay, escaped_root.as_ref());
-                glib::Propagation::Stop
-            } else {
-                glib::Propagation::Proceed
-            }
+        close_on_escape(&layer, move || {
+            dismiss_modal_layer(&escaped_layer, &escaped_overlay, escaped_root.as_ref());
         });
-        layer.add_controller(escape);
         layer.grab_focus();
 
         let measurement =

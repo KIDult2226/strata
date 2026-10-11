@@ -15,8 +15,8 @@ use gtk::{
 
 use crate::app::Browser;
 use crate::ui::keys::{
-    self,
-    bindings::{COMPLETE, DOWN, ENTER_ANY_SHIFT, ESCAPE_ANY_SHIFT, PAGE_DOWN, PAGE_UP, UP},
+    self, Keys,
+    bindings::{COMPLETE, DOWN, ENTER, ENTER_ANY_SHIFT, ESCAPE_ANY_SHIFT, PAGE_DOWN, PAGE_UP, UP},
 };
 
 const MAX_COMPLETION_CANDIDATES: usize = 50;
@@ -120,17 +120,11 @@ impl PathCompletion {
         content_box.append(&scroll);
 
         let shortcuts = gtk::Label::new(None);
-        {
-            use crate::ui::keys::{
-                Keys,
-                bindings::{COMPLETE, DOWN, ENTER, UP},
-            };
-            shortcuts.set_markup(&crate::ui::shortcut_reference::legend_markup(&[
-                (Keys::One(COMPLETE), "completion.complete"),
-                (Keys::Any(&[UP, DOWN]), "Choose"),
-                (Keys::One(ENTER), "Open"),
-            ]));
-        }
+        shortcuts.set_markup(&crate::ui::shortcut_reference::legend_markup(&[
+            (Keys::One(COMPLETE), "completion.complete"),
+            (Keys::Any(&[UP, DOWN]), "Choose"),
+            (Keys::One(ENTER), "Open"),
+        ]));
         shortcuts.set_xalign(0.0);
         shortcuts.add_css_class("path-completion-shortcuts");
         content_box.append(&shortcuts);

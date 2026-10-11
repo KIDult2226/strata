@@ -19,7 +19,8 @@ use crate::ui::keys::{
     bindings::{ENTER_ANY, ESCAPE_ANY, LEFT, RIGHT, TENXER_DELETE_CONFIRM, VIM_LEFT, VIM_RIGHT},
 };
 use crate::ui::modal::{
-    ModalHost, dismiss_modal_layer, dismiss_modal_layer_then, modal_layer, show_error_dialog,
+    ModalHost, close_on_escape, dismiss_modal_layer, dismiss_modal_layer_then, modal_layer,
+    show_error_dialog,
 };
 use gtk::gdk::ModifierType as Modifiers;
 use gtk::prelude::*;
@@ -355,20 +356,13 @@ impl ViewState {
                 }
             });
         }
-        let escape = gtk::EventControllerKey::new();
         let weak_escape = Rc::downgrade(self);
-        keys::on_press(&escape, move |_, press| {
-            if press.is(ESCAPE_ANY) {
+        if let Some(view) = self.trash_loading.borrow().as_ref() {
+            close_on_escape(&view.layer, move || {
                 if let Some(state) = weak_escape.upgrade() {
                     state.clear_trash_loading();
                 }
-                glib::Propagation::Stop
-            } else {
-                glib::Propagation::Proceed
-            }
-        });
-        if let Some(view) = self.trash_loading.borrow().as_ref() {
-            view.layer.add_controller(escape);
+            });
         }
         cancel.grab_focus();
         true

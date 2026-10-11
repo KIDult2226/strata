@@ -25,12 +25,13 @@ use crate::{
 use super::keys::{
     self, KeyPress,
     bindings::{
-        COPY, ESCAPE_ANY, MEDIA_MUTE, MEDIA_NEXT, MEDIA_PLAY_PAUSE, MEDIA_PREVIOUS,
-        MEDIA_SEEK_BACK, MEDIA_SEEK_FORWARD, MEDIA_VOLUME_DOWN, MEDIA_VOLUME_UP, SELECT_ALL,
+        COPY, MEDIA_MUTE, MEDIA_NEXT, MEDIA_PLAY_PAUSE, MEDIA_PREVIOUS, MEDIA_SEEK_BACK,
+        MEDIA_SEEK_FORWARD, MEDIA_VOLUME_DOWN, MEDIA_VOLUME_UP, PEEK, SELECT_ALL, SPACE,
     },
 };
 use super::{
-    blur::BlurBin, browser::format_file_size, controls::form_password_entry, controls::modal_layout,
+    blur::BlurBin, browser::format_file_size, controls::form_password_entry,
+    controls::modal_layout, modal::close_on_escape,
 };
 
 mod archive;
@@ -307,13 +308,9 @@ impl PreviewDrawer {
             &close,
             super::preferences::PreferenceManager::tenxer_mode,
             |close, tenxer| {
-                use crate::ui::keys::{
-                    Keys,
-                    bindings::{PEEK, SPACE},
-                };
                 close.set_tooltip_text(Some(&crate::ui::shortcut_reference::with_keys(
                     "Close preview (%{keys})",
-                    Keys::One(if tenxer { PEEK } else { SPACE }),
+                    keys::Keys::One(if tenxer { PEEK } else { SPACE }),
                 )));
             },
         );
@@ -1082,18 +1079,11 @@ impl PreviewState {
             }
         });
         let weak = Rc::downgrade(self);
-        let escape = gtk::EventControllerKey::new();
-        keys::on_press(&escape, move |_, press| {
-            if press.is(ESCAPE_ANY) {
-                if let Some(state) = weak.upgrade() {
-                    state.cancel_print();
-                }
-                glib::Propagation::Stop
-            } else {
-                glib::Propagation::Proceed
+        close_on_escape(&layer, move || {
+            if let Some(state) = weak.upgrade() {
+                state.cancel_print();
             }
         });
-        layer.add_controller(escape);
         cancel.grab_focus();
     }
 
@@ -2569,7 +2559,7 @@ impl PreviewState {
         play_button.add_css_class("preview-media-button");
         play_button.set_tooltip_text(Some(&crate::ui::shortcut_reference::with_keys(
             "Play/Pause (%{keys})",
-            crate::ui::keys::Keys::One(crate::ui::keys::bindings::MEDIA_PLAY_PAUSE),
+            keys::Keys::One(MEDIA_PLAY_PAUSE),
         )));
         play_button.set_child(Some(if media.is_playing() {
             &pause_icon
@@ -3161,7 +3151,7 @@ impl VolumeControls {
         toggle.add_css_class("preview-media-button");
         toggle.set_tooltip_text(Some(&crate::ui::shortcut_reference::with_keys(
             "Mute/unmute (%{keys})",
-            crate::ui::keys::Keys::One(crate::ui::keys::bindings::MEDIA_MUTE),
+            keys::Keys::One(MEDIA_MUTE),
         )));
         let muted = preferences.preview_muted();
         let icon = crate::assets::primary_icon(

@@ -16,9 +16,9 @@ use crate::ui::controls::{
     keep_words_whole, message_dialog_description, message_dialog_layout, modal_layout,
     segmented_control,
 };
-use crate::ui::keys::{self, bindings::ESCAPE_ANY};
 use crate::ui::modal::{
-    ModalHost, dismiss_modal_layer, modal_layer, show_error_dialog, submit_on_enter,
+    ModalHost, close_on_escape, dismiss_modal_layer, modal_layer, show_error_dialog,
+    submit_on_enter,
 };
 use crate::ui::window::{crypto_password_uuid_for_volume, gio_volume_is_encrypted};
 use futures_channel::oneshot;
@@ -255,21 +255,15 @@ fn show_trust_question_dialog(
     }
     focus_button(rejection.as_ref().unwrap_or(&layout.close));
 
-    let escape = gtk::EventControllerKey::new();
     let escape_operation = operation.clone();
     let escape_layer = layer.clone();
     let escape_overlay = window_overlay.clone();
     let escape_root = blurred_root;
-    keys::on_press(&escape, move |_, press| {
-        if !press.is(ESCAPE_ANY) {
-            return glib::Propagation::Proceed;
-        }
+    close_on_escape(&layer, move || {
         declined.set(true);
         dismiss_modal_layer(&escape_layer, &escape_overlay, escape_root.as_ref());
         escape_operation.reply(gio::MountOperationResult::Aborted);
-        glib::Propagation::Stop
     });
-    layer.add_controller(escape);
     Some(layer)
 }
 
@@ -466,25 +460,19 @@ fn show_authentication_dialog(
 
     submit_on_enter(&layout.body, &connect);
 
-    let escape = gtk::EventControllerKey::new();
     let escape_operation = operation.cloned();
     let escape_handler = cancelled;
     let escape_layer = layer.clone();
     let escape_overlay = window_overlay;
     let escape_root = blurred_root;
-    keys::on_press(&escape, move |_, press| {
-        if !press.is(ESCAPE_ANY) {
-            return glib::Propagation::Proceed;
-        }
+    close_on_escape(&layer, move || {
         dismiss_modal_layer(&escape_layer, &escape_overlay, escape_root.as_ref());
         if let Some(operation) = escape_operation.as_ref() {
             operation.reply(gio::MountOperationResult::Aborted);
         } else if let Some(cancelled) = escape_handler.as_ref() {
             cancelled();
         }
-        glib::Propagation::Stop
     });
-    layer.add_controller(escape);
 
     if flags.contains(gio::AskPasswordFlags::NEED_USERNAME) && defaults.0.is_empty() {
         username.grab_focus();
@@ -1956,21 +1944,14 @@ impl ViewState {
                 }
             }
         });
-        let escape = gtk::EventControllerKey::new();
-        keys::on_press(&escape, {
+        close_on_escape(&view.layer, {
             let hide_keys = hide_keys.clone();
-            move |_, press| {
-                if press.is(ESCAPE_ANY) {
-                    if let Some(state) = weak.upgrade() {
-                        state.hide_unlock_progress(&hide_keys);
-                    }
-                    glib::Propagation::Stop
-                } else {
-                    glib::Propagation::Proceed
+            move || {
+                if let Some(state) = weak.upgrade() {
+                    state.hide_unlock_progress(&hide_keys);
                 }
             }
         });
-        view.layer.add_controller(escape);
         hide.grab_focus();
         if let Some(slot) = self
             .unlock_slots

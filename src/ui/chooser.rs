@@ -50,6 +50,7 @@ use super::{
         message_dialog_layout,
     },
     marquee::OriginClick,
+    modal::close_on_escape,
     preferences::PreferenceManager,
     preview::{PreviewDrawer, preview_target},
     shortcut_footer::ShortcutFooter,
@@ -1140,17 +1141,8 @@ impl ChooserState {
                 state.complete_paths(paths.clone(), None);
             }
         });
-        let escape = gtk::EventControllerKey::new();
         let cancel = layout.cancel.clone();
-        keys::on_press(&escape, move |_, press| {
-            if press.is(ESCAPE_ANY) {
-                cancel.emit_clicked();
-                glib::Propagation::Stop
-            } else {
-                glib::Propagation::Proceed
-            }
-        });
-        layer.add_controller(escape);
+        close_on_escape(&layer, move || cancel.emit_clicked());
         focus_button(&layout.cancel);
     }
 

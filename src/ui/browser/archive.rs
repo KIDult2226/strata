@@ -31,8 +31,8 @@ use crate::ui::keys::{
     bindings::{ENTER_ANY, ESCAPE_ANY},
 };
 use crate::ui::modal::{
-    ModalHost, dismiss_modal_layer, modal_layer, remember_modal_focus, show_error_dialog,
-    submit_on_enter,
+    ModalHost, close_on_escape, dismiss_modal_layer, modal_layer, remember_modal_focus,
+    show_error_dialog, submit_on_enter,
 };
 use gtk::prelude::*;
 use gtk::{gio, glib};
@@ -116,17 +116,8 @@ impl ViewState {
         layout.cancel.connect_clicked(move |_| dismiss_for_cancel());
         let dismiss_for_close = dismiss.clone();
         layout.close.connect_clicked(move |_| dismiss_for_close());
-        let escape = gtk::EventControllerKey::new();
         let dismiss_for_escape = dismiss.clone();
-        keys::on_press(&escape, move |_, press| {
-            if press.is(ESCAPE_ANY) {
-                dismiss_for_escape();
-                glib::Propagation::Stop
-            } else {
-                glib::Propagation::Proceed
-            }
-        });
-        layer.add_controller(escape);
+        close_on_escape(&layer, move || dismiss_for_escape());
         (layout.body, layout.confirm, dismiss)
     }
 

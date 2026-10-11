@@ -151,7 +151,7 @@ impl SearchDialog {
         };
         let navigation = hint_label(&super::shortcut_reference::with_keys(
             "%{keys}  navigate",
-            super::keys::Keys::Any(&[super::keys::bindings::UP, super::keys::bindings::DOWN]),
+            keys::Keys::Any(&[UP, DOWN]),
         ));
         let open = gtk::Box::new(gtk::Orientation::Horizontal, 5);
         open.set_valign(gtk::Align::Center);
@@ -172,7 +172,7 @@ impl SearchDialog {
         ));
         reveal_hint.append(&hint_label(&super::shortcut_reference::with_keys(
             "%{keys}  open containing folder",
-            super::keys::Keys::One(super::keys::bindings::OPEN_CONTAINING_FOLDER),
+            keys::Keys::One(OPEN_CONTAINING_FOLDER),
         )));
         reveal_hint.add_css_class("search-hint");
         footer.append(&reveal_hint);

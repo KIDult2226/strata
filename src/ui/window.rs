@@ -35,14 +35,14 @@ use super::{
     browser_modes::{BrowserDensity, BrowserMode},
     controls::{ModalTone, focus_button, message_dialog_description, message_dialog_layout},
     keys::{
-        self, KeyPress,
+        KeyPress,
         bindings::{
-            BACKSPACE, DOWN, ENTER, ESCAPE_ANY, FILTER_SLASH, FIRST_ITEM, FOCUS_NEXT, LAST_ITEM,
-            LEFT, PAGE_DOWN, PAGE_UP, RIGHT, SPACE, UP, VIEW_COLUMNS, VIEW_ICONS, VIEW_LIST,
-            VIM_DOWN, VIM_LEFT, VIM_RIGHT, VIM_UP,
+            BACKSPACE, DOWN, ENTER, FILTER_SLASH, FIRST_ITEM, FOCUS_NEXT, LAST_ITEM, LEFT,
+            PAGE_DOWN, PAGE_UP, RIGHT, SPACE, UP, VIEW_COLUMNS, VIEW_ICONS, VIEW_LIST, VIM_DOWN,
+            VIM_LEFT, VIM_RIGHT, VIM_UP,
         },
     },
-    modal::{ModalHost, dismiss_modal_layer, modal_layer},
+    modal::{ModalHost, close_on_escape, dismiss_modal_layer, modal_layer},
     motion::{animations_enabled, emphasized_deceleration},
     preferences::PreferenceManager,
 };
@@ -3293,21 +3293,15 @@ fn confirm_forget_cached_password(
             on_confirm();
         }
     });
-    let escape = gtk::EventControllerKey::new();
     let escape_dismiss = dismiss;
     let escape_handler = on_cancel;
-    keys::on_press(&escape, move |_, press| {
-        if !press.is(ESCAPE_ANY) {
-            return glib::Propagation::Proceed;
-        }
+    close_on_escape(&layer, move || {
         if escape_dismiss()
             && let Some(on_cancel) = escape_handler.borrow_mut().take()
         {
             on_cancel();
         }
-        glib::Propagation::Stop
     });
-    layer.add_controller(escape);
     focus_button(&confirm);
 }
 

@@ -317,10 +317,6 @@ impl PreviewDrawer {
         &self,
         preferences: &super::super::preferences::PreferenceManager,
     ) {
-        use super::super::keys::{
-            Keys,
-            bindings::{FIND_IN_PREVIEW, TENXER_FIND_IN_PREVIEW},
-        };
         let button = self.state.find_button.downgrade();
         preferences.bind_preference(
             &self.state.find_button,
@@ -336,7 +332,7 @@ impl PreviewDrawer {
                 };
                 let label = rust_i18n::t!(
                     "Find in preview (%{shortcut})",
-                    shortcut = super::super::keys::label(&Keys::One(shortcut))
+                    shortcut = keys::label(&keys::Keys::One(shortcut))
                 );
                 button.set_tooltip_text(Some(&label));
                 super::super::accessibility::set_label(&button, &label);
