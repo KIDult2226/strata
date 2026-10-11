@@ -282,13 +282,21 @@ impl PreviewDrawer {
         )));
         wrap.add_css_class("preview-header-action");
         wrap.set_visible(false);
-        let close = gtk::Button::builder()
-            .tooltip_text(crate::ui::shortcut_reference::with_keys(
-                "Close preview (%{keys})",
-                crate::ui::keys::Keys::One(crate::ui::keys::bindings::SPACE),
-            ))
-            .valign(gtk::Align::Center)
-            .build();
+        let close = gtk::Button::builder().valign(gtk::Align::Center).build();
+        super::preferences::PreferenceManager::shared().bind_preference(
+            &close,
+            super::preferences::PreferenceManager::tenxer_mode,
+            |close, tenxer| {
+                use crate::ui::keys::{
+                    Keys,
+                    bindings::{PEEK, SPACE},
+                };
+                close.set_tooltip_text(Some(&crate::ui::shortcut_reference::with_keys(
+                    "Close preview (%{keys})",
+                    Keys::One(if tenxer { PEEK } else { SPACE }),
+                )));
+            },
+        );
         close.set_child(Some(&crate::assets::chrome_icon(
             crate::assets::icons::PANEL_RIGHT_CLOSE,
         )));

@@ -1011,7 +1011,7 @@ def test_preview_find_navigates_content_without_filtering_files(strata, filename
     strata.wait(lambda: strata.preview_shows("No matches"), "empty search results")
     strata.keyboard.press("Escape")
     strata.wait(lambda: strata.preview().find(role="text", name="Find in preview") is None, "find to dismiss without closing the document")
-    strata.pointer.click(strata.preview().find(role="button", name="Close preview (Space)"))
+    strata.pointer.click(strata.preview().find(role="button", name=f"Close preview ({'i' if tenxer else 'Space'})"))
     strata.wait(lambda: strata.preview() is None, "preview to close")
     strata.select_entry_with_keyboard("after.txt")
     selected_after = strata.selected_names()
