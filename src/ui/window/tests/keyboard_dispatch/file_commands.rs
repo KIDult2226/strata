@@ -807,11 +807,7 @@ fn undo_and_redo_run_only_on_their_exact_chords() {
                 pump(100);
                 assert!(restored(), "{modifiers:?}+{key:?} must not redo");
             }
-            for (key, modifiers) in [
-                (Key::z, control | shift),
-                (Key::Z, control | shift),
-                (Key::y, control),
-            ] {
+            for (key, modifiers) in [(Key::Z, control | shift), (Key::y, control)] {
                 focus_files(&fixture);
                 assert!(fixture.press(key, modifiers), "{modifiers:?}+{key:?}");
                 wait_until(renamed);

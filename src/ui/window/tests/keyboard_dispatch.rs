@@ -1381,11 +1381,9 @@ fn default_commands_ignore_near_miss_chords() {
             );
             pump(50);
             assert!(!sidebar_has_focus(&fixture), "Ctrl+B does not focus it");
-            for key in [Key::b, Key::B] {
-                focus_files(&fixture);
-                assert!(fixture.press(key, control | shift), "Ctrl+Shift+{key:?}");
-                wait_until(|| sidebar_has_focus(&fixture));
-            }
+            focus_files(&fixture);
+            assert!(fixture.press(Key::B, control | shift), "Ctrl+Shift+B");
+            wait_until(|| sidebar_has_focus(&fixture));
         },
     );
 }

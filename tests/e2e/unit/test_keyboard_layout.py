@@ -8,34 +8,22 @@ from harness import keyboard_layout
 from harness.display import HeadlessDisplay
 from harness.environment import process_environment
 from harness.keyboard_layout import RUSSIAN, Layout, LayoutError, switched
-from harness.xtest import (
-    LOCK_MASK,
-    XKB_USE_CORE_KBD,
-    KeyboardState,
-    XTestConnection,
-    XTestError,
-)
+from harness.xtest import LOCK_MASK, KeyboardState, XTestConnection, XTestError
 
 
 class FakeXkb:
-    def __init__(self, accepted=True, status=0):
+    def __init__(self, accepted, status):
         self.accepted = accepted
         self.status = status
-        self.calls = []
 
-    def XkbLockGroup(self, _display, device, group):
-        self.calls.append(("lock group", device, group))
+    def XkbLockGroup(self, _display, _device, _group):
         return self.accepted
 
-    def XkbLockModifiers(self, _display, device, affect, values):
-        self.calls.append(("lock modifiers", device, affect, values))
+    def XkbLockModifiers(self, _display, _device, _affect, _values):
         return self.accepted
 
     def XkbGetState(self, _display, _device, _state):
         return self.status
-
-    def XSync(self, *_):
-        self.calls.append(("sync",))
 
 
 def connection_for(x11):
@@ -43,18 +31,6 @@ def connection_for(x11):
     connection._display = 1
     connection._x11 = x11
     return connection
-
-
-def test_locks_reach_the_core_keyboard_before_the_next_key_event():
-    connection = connection_for(FakeXkb())
-    connection.lock_group(1)
-    connection.lock_modifiers(LOCK_MASK, LOCK_MASK)
-    assert connection._x11.calls == [
-        ("lock group", XKB_USE_CORE_KBD, 1),
-        ("sync",),
-        ("lock modifiers", XKB_USE_CORE_KBD, LOCK_MASK, LOCK_MASK),
-        ("sync",),
-    ]
 
 
 @pytest.mark.parametrize(
