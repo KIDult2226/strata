@@ -509,19 +509,7 @@ fn sidebar_focus_direction(
     tolerated: ModifierType,
 ) -> Option<gtk::DirectionType> {
     super::focus_navigation::arrow_direction(press, tolerated)
-        .or_else(|| vim_focus_direction(press))
-}
-
-pub(super) fn vim_focus_direction(press: &KeyPress) -> Option<gtk::DirectionType> {
-    [
-        (VIM_LEFT, gtk::DirectionType::Left),
-        (VIM_DOWN, gtk::DirectionType::Down),
-        (VIM_UP, gtk::DirectionType::Up),
-        (VIM_RIGHT, gtk::DirectionType::Right),
-    ]
-    .into_iter()
-    .find(|(key, _)| press.is(*key))
-    .map(|(_, direction)| direction)
+        .or_else(|| super::focus_navigation::vim_focus_direction(press))
 }
 
 pub(super) fn visible_modal_layer(window: &impl IsA<gtk::Window>) -> Option<gtk::Widget> {

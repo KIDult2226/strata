@@ -103,6 +103,18 @@ pub(super) fn arrow_direction(
     .map(|(_, direction)| direction)
 }
 
+/// The direction an **h j k l** press moves focus.
+pub(super) fn vim_focus_direction(press: &KeyPress) -> Option<gtk::DirectionType> {
+    [
+        (VIM_LEFT, gtk::DirectionType::Left),
+        (VIM_DOWN, gtk::DirectionType::Down),
+        (VIM_UP, gtk::DirectionType::Up),
+        (VIM_RIGHT, gtk::DirectionType::Right),
+    ]
+    .into_iter()
+    .find_map(|(binding, direction)| press.is(binding).then_some(direction))
+}
+
 pub(super) fn plain_tab_direction(press: &KeyPress) -> Option<gtk::DirectionType> {
     if press.is(FOCUS_NEXT) {
         Some(gtk::DirectionType::TabForward)

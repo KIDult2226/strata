@@ -57,11 +57,13 @@ use super::{
     window::{
         ChooserKeys, ChooserPolicy, MIN_SIDEBAR_WIDTH, SIDEBAR_WIDTH, SidebarView,
         build_appearance_menu, build_sidebar, edit_focused_text, home_directory,
-        install_modal_focus_trap, vim_focus_direction, visible_modal_layer,
+        install_modal_focus_trap, visible_modal_layer,
     },
 };
 use super::{
-    focus_navigation::{FOCUS_MODIFIERS, arrow_direction, plain_tab_direction},
+    focus_navigation::{
+        FOCUS_MODIFIERS, arrow_direction, plain_tab_direction, vim_focus_direction,
+    },
     keys::{self, KeyPress, SHORTCUT_MODIFIERS, bindings::*},
 };
 

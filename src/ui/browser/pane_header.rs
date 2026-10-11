@@ -2,8 +2,9 @@
 
 use crate::app::Browser;
 use crate::model::{FolderSort, SortDirection, SortKey};
-use crate::ui::browser::{ViewState, vim_focus_direction};
+use crate::ui::browser::ViewState;
 use crate::ui::controls::{DefaultActions, check_menu_option, menu_option};
+use crate::ui::focus_navigation::vim_focus_direction;
 use crate::ui::keys::{self, bindings::BACKSPACE};
 use crate::ui::preferences::PreferenceManager;
 use gtk::gdk::ModifierType as Modifiers;

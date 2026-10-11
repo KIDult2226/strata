@@ -23,10 +23,7 @@ use crate::ui::browser::transfer::PendingSendToCompletion;
 use crate::ui::browser::transfer::duplicate_transfer;
 use crate::ui::browser::trash::TrashLoadingView;
 use crate::ui::browser_modes::{BrowserDensity, BrowserMode, ClickActivation, ModeViews};
-use crate::ui::keys::{
-    self, KeyPress,
-    bindings::{VIM_DOWN, VIM_LEFT, VIM_RIGHT, VIM_UP},
-};
+use crate::ui::keys;
 use gtk::glib;
 use gtk::prelude::*;
 use std::cell::{Cell, RefCell};
@@ -2832,17 +2829,6 @@ fn new_folder_destination_depth(
 
 fn single_pane_preview_reservation(width: i32) -> i32 {
     width.max(0) / 2
-}
-
-fn vim_focus_direction(press: &KeyPress) -> Option<gtk::DirectionType> {
-    [
-        (VIM_LEFT, gtk::DirectionType::Left),
-        (VIM_DOWN, gtk::DirectionType::Down),
-        (VIM_UP, gtk::DirectionType::Up),
-        (VIM_RIGHT, gtk::DirectionType::Right),
-    ]
-    .into_iter()
-    .find_map(|(binding, direction)| press.is(binding).then_some(direction))
 }
 
 mod chooser_context;

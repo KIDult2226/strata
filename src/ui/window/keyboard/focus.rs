@@ -7,9 +7,11 @@ use crate::{
     app::Browser,
     ui::{
         browser_modes::BrowserMode,
-        focus_navigation::{FOCUS_MODIFIERS, arrow_direction, plain_tab_direction},
+        focus_navigation::{
+            FOCUS_MODIFIERS, arrow_direction, plain_tab_direction, vim_focus_direction,
+        },
         keys::{SHORTCUT_MODIFIERS, bindings::*},
-        window::{sidebar_focus_direction, vim_focus_direction},
+        window::sidebar_focus_direction,
     },
 };
 

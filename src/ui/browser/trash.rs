@@ -6,13 +6,14 @@ use crate::adapters::trash_restore::restore_destinations_for_locations;
 use crate::model::{FileEntry, Location};
 use crate::services::{LoadHandle, RestoreTrashItem};
 use crate::ui::blur::BlurBin;
+use crate::ui::browser::ViewState;
 use crate::ui::browser::entry::{
     aggregate_directory_summary, entry_icon, entry_kind_summary, format_file_size, item_count_label,
 };
-use crate::ui::browser::{ViewState, vim_focus_direction};
 use crate::ui::controls::{
     ModalTone, focus_button, message_dialog_description, message_dialog_layout, modal_layout,
 };
+use crate::ui::focus_navigation::vim_focus_direction;
 use crate::ui::keys::{
     self, KeyPress,
     bindings::{ENTER_ANY, ESCAPE_ANY, LEFT, RIGHT, TENXER_DELETE_CONFIRM, VIM_LEFT, VIM_RIGHT},
