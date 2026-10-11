@@ -190,6 +190,88 @@ fn select_all_and_unselect_all_clear_the_cell_range_exactly() {
 }
 
 #[test]
+fn fallback_copy_and_select_all_run_the_focused_cells_own_actions() {
+    crate::test_support::gtk_test(
+        "ui::table_view::selection::tests::fallback_copy_and_select_all_run_the_focused_cells_own_actions",
+        || {
+            use gtk::gdk::{Key, ModifierType as Modifiers};
+            let table = TableState::new(vec![vec![DocumentTableCellLayout {
+                text: "value".into(),
+                header: false,
+                spans: Vec::new(),
+            }]]);
+            let window = gtk::Window::builder().child(&table.widget()).build();
+            window.present();
+            let context = glib::MainContext::default();
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            let cell = loop {
+                while context.pending() {
+                    context.iteration(false);
+                }
+                if let Some(cell) = descendant(window.upcast_ref(), &|label: &gtk::Label| {
+                    label.text() == "value"
+                }) {
+                    break cell;
+                }
+                assert!(std::time::Instant::now() < deadline, "table cell bound");
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            };
+            cell.grab_focus();
+            let view =
+                descendant(window.upcast_ref(), &|_: &gtk::ColumnView| true).expect("table view");
+            let keys = view
+                .observe_controllers()
+                .iter::<glib::Object>()
+                .filter_map(Result::ok)
+                .filter_map(|controller| controller.downcast::<gtk::EventControllerKey>().ok())
+                .find(|controller| controller.propagation_phase() == gtk::PropagationPhase::Capture)
+                .expect("cell selection key controller");
+            // Without a Latin layout, these keys read as Ctrl+A and Ctrl+C by position.
+            let press = |key: Key, keycode: u32| {
+                keys.emit_by_name::<bool>(
+                    "key-pressed",
+                    &[&key, &keycode, &Modifiers::CONTROL_MASK],
+                )
+            };
+
+            assert!(press(Key::Cyrillic_ef, 38), "Ctrl+A stays in the cell");
+            assert_eq!(cell.selection_bounds(), Some((0, 5)));
+            let clipboard = cell.clipboard();
+            clipboard.set_text("before");
+            assert!(press(Key::Cyrillic_es, 54), "Ctrl+C stays in the cell");
+            assert_eq!(
+                context
+                    .block_on(clipboard.read_text_future())
+                    .ok()
+                    .flatten()
+                    .as_deref(),
+                Some("value")
+            );
+            window.close();
+        },
+    );
+}
+
+fn descendant<T: IsA<gtk::Widget> + glib::object::IsClass>(
+    root: &gtk::Widget,
+    accept: &impl Fn(&T) -> bool,
+) -> Option<T> {
+    if let Some(widget) = root.downcast_ref::<T>()
+        && accept(widget)
+    {
+        return Some(widget.clone());
+    }
+    let mut child = root.first_child();
+    while let Some(widget) = child {
+        child = widget.next_sibling();
+        if let Some(found) = descendant(&widget, accept) {
+            return Some(found);
+        }
+    }
+    None
+}
+
+#[test]
 fn unmapping_releases_the_window_dismissal_listener() {
     crate::test_support::gtk_test(
         "ui::table_view::selection::tests::unmapping_releases_the_window_dismissal_listener",

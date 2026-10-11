@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::ui::keys::{
-    self, Binding, SHORTCUT_MODIFIERS,
+    self, Binding, KeyPress, SHORTCUT_MODIFIERS,
     bindings::{
         COPY, DOWN, ESCAPE_ANY, FIRST_ITEM, LAST_ITEM, LEFT, RIGHT, SELECT_ALL, UNSELECT_ALL, UP,
     },
@@ -18,6 +18,11 @@ const CLEARS_SELECTION: [Binding; 9] = [
     LAST_ITEM.ignoring(SHORTCUT_MODIFIERS),
     SELECT_ALL,
     UNSELECT_ALL,
+];
+
+const CELL_ACTIONS: [(Binding, &str); 2] = [
+    (COPY, "clipboard.copy"),
+    (SELECT_ALL, "selection.select-all"),
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -400,7 +405,7 @@ impl Selection {
         key.set_propagation_phase(gtk::PropagationPhase::Capture);
         let state = self.clone();
         let weak_view = view.downgrade();
-        keys::on_press(&key, move |_, press| {
+        keys::on_press(&key, move |controller, press| {
             if press.is(COPY)
                 && let (Some(text), Some(view)) = (state.copy_text(), weak_view.upgrade())
             {
@@ -410,7 +415,7 @@ impl Selection {
             if press.is_any(&CLEARS_SELECTION) {
                 state.clear();
             }
-            glib::Propagation::Proceed
+            run_focused_cell_action(controller, press)
         });
         view.add_controller(key);
         let state = self.clone();
@@ -455,6 +460,33 @@ impl Selection {
             self.highlight();
         }
     }
+}
+
+/// The focused cell's GTK bindings cannot match a key that only the layout
+/// fallback reads; left alone, it would copy the whole table or select the
+/// whole document.
+fn run_focused_cell_action(
+    controller: &gtk::EventControllerKey,
+    press: &KeyPress,
+) -> glib::Propagation {
+    let Some((_, action)) = CELL_ACTIONS
+        .iter()
+        .find(|(binding, _)| press.from_fallback() && press.is(*binding))
+    else {
+        return glib::Propagation::Proceed;
+    };
+    let Some(cell) = controller
+        .widget()
+        .and_then(|view| view.root())
+        .and_then(|root| root.focus())
+        .and_downcast::<gtk::Label>()
+    else {
+        return glib::Propagation::Proceed;
+    };
+    if let Err(error) = cell.activate_action(action, None) {
+        tracing::warn!(%error, action, "table cell action unavailable");
+    }
+    glib::Propagation::Stop
 }
 
 fn replace_highlight(label: &gtk::Label, attributes: Option<&gtk::pango::AttrList>) {
