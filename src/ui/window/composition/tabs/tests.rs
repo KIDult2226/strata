@@ -385,6 +385,12 @@ fn tab_shortcuts_work_in_both_modes_and_follow_reordering() {
                 tabs.reorder(new_id, 1);
                 tabs.handle_key(&press(Key::exclam, M::CONTROL_MASK | M::SHIFT_MASK));
                 assert_eq!(tabs.active.get(), new_id);
+                // Swiss German types + with Shift on the 1 key: that is Ctrl++.
+                let swiss_plus =
+                    KeyPress::from_signal(Key::plus, 10, M::CONTROL_MASK | M::SHIFT_MASK);
+                assert!(!is_tab_shortcut(&swiss_plus));
+                assert_eq!(tabs.handle_key(&swiss_plus), glib::Propagation::Proceed);
+                assert_eq!(tabs.active.get(), new_id);
                 tabs.handle_key(&press(Key::Tab, M::CONTROL_MASK));
                 assert_eq!(tabs.active.get(), 1);
                 tabs.handle_key(&press(Key::ISO_Left_Tab, M::CONTROL_MASK | M::SHIFT_MASK));

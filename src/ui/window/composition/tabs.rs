@@ -538,7 +538,7 @@ impl TabWindow {
             self.move_active_tab(-1);
         } else if press.is(TAB_MOVE_RIGHT) {
             self.move_active_tab(1);
-        } else if let Some(digit) = press.digit_in(TAB_NUMBERS) {
+        } else if let Some(digit) = tab_number(press) {
             self.select_index(tab_index(digit));
         }
         glib::Propagation::Stop
@@ -583,7 +583,16 @@ pub(in crate::ui::window) fn is_tab_shortcut(press: &KeyPress) -> bool {
         TAB_PREVIOUS_PAGE_UP,
         TAB_MOVE_LEFT,
         TAB_MOVE_RIGHT,
-    ]) || press.digit_in(TAB_NUMBERS).is_some()
+    ]) || tab_number(press).is_some()
+}
+
+/// A tab digit, unless the key types the `+` or `−` of a text size shortcut,
+/// as the 1 key does with Shift on Swiss German.
+fn tab_number(press: &KeyPress) -> Option<u8> {
+    if press.is_any(&[TEXT_LARGER, TEXT_SMALLER]) {
+        return None;
+    }
+    press.digit_in(TAB_NUMBERS)
 }
 
 fn action_location(parameter: Option<&glib::Variant>) -> Option<Location> {
