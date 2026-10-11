@@ -569,7 +569,7 @@ fn signals_without_an_event_read_as_us_presses() {
 mod labels {
     use gtk::gdk::{Key, ModifierType as Modifiers};
 
-    use super::super::{Binding, Digits, Keys, label_in};
+    use super::super::{Binding, Digits, Keys, digit_label, label_in};
 
     const CTRL: Modifiers = Modifiers::CONTROL_MASK;
 
@@ -617,20 +617,18 @@ mod labels {
             Keys::Chord(&[Binding::plain(Key::g), Binding::plain(Key::g)]),
             Keys::One(Binding::plain(Key::Home)),
         ];
+        const TAB_NUMBERS: Digits = Digits::new(CTRL.union(Modifiers::SHIFT_MASK), 9, true);
+        const TAB_CHORD_NUMBERS: Digits = Digits::after(Binding::plain(Key::t), 9, true);
         let cases = [
             (Keys::Any(&RENAME), "F2 / Ctrl+R"),
             (Keys::Any(&ARROWS), "Ctrl+Alt+← / →"),
             (Keys::Any(&SCROLL), "Ctrl+U / Ctrl+D"),
             (Keys::Chord(&GO_HOME), "g h"),
             (Keys::Mixed(&TOP), "g g / Home"),
-            (
-                Keys::Digits(Digits::new(CTRL | Modifiers::SHIFT_MASK, 9, true)),
-                "Ctrl+Shift+1\u{2013}9 / 0",
-            ),
-            (
-                Keys::Digits(Digits::after(Binding::plain(Key::t), 9, true)),
-                "t 1\u{2013}9 / t 0",
-            ),
+            (Keys::Digits(TAB_NUMBERS), "Ctrl+Shift+1\u{2013}9 / 0"),
+            (Keys::Digits(TAB_CHORD_NUMBERS), "t 1\u{2013}9 / t 0"),
+            (Keys::Digits(TAB_CHORD_NUMBERS.step()), "1\u{2013}9 / 0"),
+            (Keys::Digits(TAB_NUMBERS.step()), "1\u{2013}9 / 0"),
             (
                 Keys::Digits(Digits::after(Binding::plain(Key::g), 9, false)),
                 "g 1\u{2013}9",
@@ -639,6 +637,9 @@ mod labels {
         for (keys, expected) in cases {
             assert_eq!(english(keys), expected);
         }
+        // Neither label is translated, so the locale other tests set cannot change them.
+        assert_eq!(digit_label(TAB_CHORD_NUMBERS, 0), "t 0");
+        assert_eq!(digit_label(TAB_NUMBERS.step(), 3), "3");
     }
 
     #[test]

@@ -57,6 +57,16 @@ impl Digits {
         self.prefix
     }
 
+    /// The digits alone, as a panel or badge lists them while the prefix or
+    /// modifiers are held. Handlers match the full range.
+    pub(crate) const fn step(self) -> Self {
+        Self {
+            prefix: None,
+            modifiers: Modifiers::empty(),
+            ..self
+        }
+    }
+
     pub(crate) fn contains(self, digit: u8) -> bool {
         (1..=self.last).contains(&digit) || (digit == 0 && self.zero)
     }
@@ -82,6 +92,18 @@ pub(crate) fn search_text(keys: &Keys) -> String {
 /// Held modifiers alone, such as **Ctrl+Shift** in "hold Ctrl+Shift for numbers".
 pub(crate) fn modifiers_label(modifiers: Modifiers) -> String {
     modifier_names(&rust_i18n::locale(), modifiers).join("+")
+}
+
+/// One digit of `digits`, for a hint that names a single member: **g 3**,
+/// **Ctrl+Shift+3**, or **3** from [`Digits::step`].
+pub(crate) fn digit_label(digits: Digits, digit: u8) -> String {
+    debug_assert!(digits.contains(digit), "{digit} is outside {digits:?}");
+    let locale = rust_i18n::locale();
+    let digit = digit.to_string();
+    match digits.prefix {
+        Some(prefix) => format!("{} {digit}", binding_label(&locale, prefix)),
+        None => with_modifiers(&locale, digits.modifiers, &digit),
+    }
 }
 
 pub(crate) fn label_in(locale: &str, keys: &Keys) -> String {

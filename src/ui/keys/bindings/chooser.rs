@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: MIT
 
+use gtk::gdk::Key;
+
+use crate::ui::keys::Binding;
+
 catalog! {
-    listed {}
+    listed {
+        CHOOSE_FOLDER: Binding = Binding::ctrl(Key::Return);
+    }
     unlisted {}
 }
