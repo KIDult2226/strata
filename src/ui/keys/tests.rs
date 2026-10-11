@@ -667,7 +667,9 @@ mod labels {
 #[test]
 fn catalog_bindings_use_the_canonical_key() {
     use gtk::glib::translate::IntoGlib;
-    let entries = super::bindings::listed().chain(super::bindings::unlisted());
+    let entries = super::bindings::listed()
+        .map(|constant| (constant.name, constant.entry))
+        .chain(super::bindings::unlisted());
     let mut checked = 0;
     for (name, entry) in entries {
         let super::bindings::Entry::Binding(binding) = entry else {
@@ -692,28 +694,52 @@ fn catalog_bindings_use_the_canonical_key() {
     assert!(checked > 0);
 }
 
+/// Constants with equal bindings each need a row of their own, since a row
+/// shows bindings rather than constants.
 #[test]
-fn every_listed_binding_appears_in_a_reference_scope() {
-    use super::{Keys, bindings::Entry};
-    fn shows(keys: &Keys, entry: Entry) -> bool {
-        match (keys, entry) {
-            (Keys::One(binding), Entry::Binding(wanted)) => *binding == wanted,
-            (Keys::Any(bindings) | Keys::Chord(bindings), Entry::Binding(wanted)) => {
-                bindings.contains(&wanted)
+fn every_listed_binding_has_its_own_row_in_its_maps() {
+    use super::{
+        Keys,
+        bindings::{Entry, Listed},
+    };
+    fn shows(keys: &Keys, constant: &Listed) -> bool {
+        match (keys, constant.entry, constant.after) {
+            (Keys::Mixed(alternatives), ..) => {
+                alternatives.iter().any(|keys| shows(keys, constant))
             }
-            (Keys::Digits(digits), Entry::Digits(wanted)) => *digits == wanted,
-            (Keys::Mixed(alternatives), _) => alternatives.iter().any(|keys| shows(keys, entry)),
+            (Keys::Digits(digits), Entry::Digits(wanted), _) => *digits == wanted,
+            (Keys::Chord(steps), Entry::Binding(wanted), Some(first)) => {
+                steps.windows(2).any(|pair| pair == [first, wanted])
+            }
+            (Keys::Chord(steps), Entry::Binding(wanted), None) => steps.first() == Some(&wanted),
+            (Keys::One(binding), Entry::Binding(wanted), None) => *binding == wanted,
+            (Keys::Any(bindings), Entry::Binding(wanted), None) => bindings.contains(&wanted),
             _ => false,
         }
     }
-    let shown = crate::ui::shortcut_reference::listed_keys();
-    let mut checked = 0;
-    for (name, entry) in super::bindings::listed() {
-        checked += 1;
-        assert!(
-            shown.iter().any(|keys| shows(keys, entry)),
-            "{name} is listed, but no reference scope shows it; add a row or mark it unlisted"
-        );
+    let listed: Vec<Listed> = super::bindings::listed().collect();
+    assert!(!listed.is_empty());
+    for (tenxer, map) in [(false, "default"), (true, "10xer")] {
+        let rows = crate::ui::shortcut_reference::reference_rows(tenxer);
+        let wanted: Vec<&Listed> = listed
+            .iter()
+            .filter(|constant| constant.maps.include(tenxer))
+            .collect();
+        for constant in &wanted {
+            let sharing: Vec<&str> = wanted
+                .iter()
+                .filter(|other| other.entry == constant.entry && other.after == constant.after)
+                .map(|other| other.name)
+                .collect();
+            let shown = rows
+                .iter()
+                .filter(|row| row.iter().any(|keys| shows(keys, constant)))
+                .count();
+            assert!(
+                shown >= sharing.len(),
+                "{sharing:?} need a row each in the {map} reference, which has {shown}; add a \
+                 row, or move a constant to the catalog block of the maps that list it"
+            );
+        }
     }
-    assert!(checked > 0);
 }

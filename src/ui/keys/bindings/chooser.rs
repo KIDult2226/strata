@@ -5,8 +5,7 @@ use gtk::gdk::Key;
 use crate::ui::keys::Binding;
 
 catalog! {
-    listed {
+    tenxer_only {
         CHOOSE_FOLDER: Binding = Binding::ctrl(Key::Return);
     }
-    unlisted {}
 }

@@ -13,25 +13,17 @@ catalog! {
         UNDO: Binding = Binding::ctrl(Key::z);
         REDO: Binding = Binding::ctrl_shift(Key::z);
         REDO_Y: Binding = Binding::ctrl(Key::y);
-        DUPLICATE: Binding = Binding::ctrl(Key::d);
 
-        COPY_PATH: Binding = Binding::plain(Key::y);
-        PIN: Binding = Binding::plain(Key::p);
         NEW_FOLDER: Binding = Binding::ctrl_shift(Key::n);
         NEW_FOLDER_WITH_SELECTION: Binding = Binding::ctrl_alt(Key::n);
         RENAME: Binding = Binding::plain(Key::F2);
-        RENAME_R: Binding = Binding::ctrl(Key::r);
         PROPERTIES: Binding = Binding::alt(Key::Return);
         CONTEXT_MENU: Binding = Binding::plain(Key::Menu);
         CONTEXT_MENU_F10: Binding = Binding::shift(Key::F10);
 
         SEARCH: Binding = Binding::ctrl(Key::k);
-        JUMP_TO_FOLDER: Binding = Binding::ctrl_shift(Key::k);
-        FILTER: Binding = Binding::ctrl(Key::f);
         LOCATION: Binding = Binding::ctrl(Key::l);
-        TERMINAL: Binding = Binding::ctrl_alt(Key::t);
         REFRESH: Binding = Binding::plain(Key::F5);
-        ARROW_SCOPE: Binding = Binding::ctrl(Key::backslash);
         HIDDEN_FILES: Binding = Binding::ctrl(Key::h);
         HIDDEN_FILES_PERIOD: Binding = Binding::ctrl(Key::period);
 
@@ -41,7 +33,6 @@ catalog! {
         TEXT_LARGER: Binding = Binding::ctrl(Key::plus);
         TEXT_SMALLER: Binding = Binding::ctrl(Key::minus);
         TEXT_RESET: Binding = Binding::ctrl(Key::_0);
-        SIDEBAR: Binding = Binding::ctrl(Key::b);
         SIDEBAR_FOCUS: Binding = Binding::ctrl_shift(Key::b);
 
         SETTINGS: Binding = Binding::ctrl(Key::comma);
@@ -61,6 +52,18 @@ catalog! {
             9,
             true,
         );
+    }
+    default_only {
+        // The 10xer map gives these keys to other commands or leaves them out.
+        DUPLICATE: Binding = Binding::ctrl(Key::d);
+        COPY_PATH: Binding = Binding::plain(Key::y);
+        PIN: Binding = Binding::plain(Key::p);
+        RENAME_R: Binding = Binding::ctrl(Key::r);
+        JUMP_TO_FOLDER: Binding = Binding::ctrl_shift(Key::k);
+        FILTER: Binding = Binding::ctrl(Key::f);
+        TERMINAL: Binding = Binding::ctrl_alt(Key::t);
+        ARROW_SCOPE: Binding = Binding::ctrl(Key::backslash);
+        SIDEBAR: Binding = Binding::ctrl(Key::b);
     }
     unlisted {
         /// While type-to-search is on, **/** opens the filter without typing.

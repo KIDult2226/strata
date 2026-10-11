@@ -5,7 +5,7 @@ use gtk::gdk::Key;
 use crate::ui::keys::{Binding, Digits};
 
 catalog! {
-    listed {
+    tenxer_only {
         CLOSE_WINDOW: Binding = Binding::shift(Key::q);
         TENXER_REFERENCE: Binding = Binding::plain(Key::asciitilde);
         TENXER_SIDEBAR: Binding = Binding::ctrl(Key::n);
@@ -50,44 +50,44 @@ catalog! {
         JUMP_RECENT: Binding = Binding::shift(Key::z);
 
         GO: Binding = Binding::plain(Key::g);
-        GO_FIRST: Binding = Binding::plain(Key::g);
-        GO_FOLLOW: Binding = Binding::plain(Key::f);
-        GO_PROMPT: Binding = Binding::plain(Key::space);
-        GO_HOME: Binding = Binding::plain(Key::h);
-        GO_CONFIG: Binding = Binding::plain(Key::c);
-        GO_DOWNLOADS: Binding = Binding::plain(Key::d);
-        GO_DOCUMENTS: Binding = Binding::plain(Key::k);
-        GO_MUSIC: Binding = Binding::plain(Key::m);
-        GO_PICTURES: Binding = Binding::plain(Key::p);
-        GO_VIDEOS: Binding = Binding::plain(Key::v);
-        GO_TRASH: Binding = Binding::plain(Key::t);
-        GO_NETWORK: Binding = Binding::plain(Key::n);
-        GO_RECENT: Binding = Binding::plain(Key::r);
-        GO_PIN: Binding = Binding::plain(Key::plus);
-        GO_UNPIN: Binding = Binding::plain(Key::minus);
+        GO_FIRST: Binding = Binding::plain(Key::g), after GO;
+        GO_FOLLOW: Binding = Binding::plain(Key::f), after GO;
+        GO_PROMPT: Binding = Binding::plain(Key::space), after GO;
+        GO_HOME: Binding = Binding::plain(Key::h), after GO;
+        GO_CONFIG: Binding = Binding::plain(Key::c), after GO;
+        GO_DOWNLOADS: Binding = Binding::plain(Key::d), after GO;
+        GO_DOCUMENTS: Binding = Binding::plain(Key::k), after GO;
+        GO_MUSIC: Binding = Binding::plain(Key::m), after GO;
+        GO_PICTURES: Binding = Binding::plain(Key::p), after GO;
+        GO_VIDEOS: Binding = Binding::plain(Key::v), after GO;
+        GO_TRASH: Binding = Binding::plain(Key::t), after GO;
+        GO_NETWORK: Binding = Binding::plain(Key::n), after GO;
+        GO_RECENT: Binding = Binding::plain(Key::r), after GO;
+        GO_PIN: Binding = Binding::plain(Key::plus), after GO;
+        GO_UNPIN: Binding = Binding::plain(Key::minus), after GO;
         PIN_NUMBERS: Digits = Digits::after(GO, 9, false);
 
         SORT_BY: Binding = Binding::plain(Key::comma);
-        SORT_BY_NAME: Binding = Binding::plain(Key::a);
-        SORT_BY_MODIFIED: Binding = Binding::plain(Key::m);
-        SORT_BY_SIZE: Binding = Binding::plain(Key::s);
-        SORT_BY_TYPE: Binding = Binding::plain(Key::e);
+        SORT_BY_NAME: Binding = Binding::plain(Key::a), after SORT_BY;
+        SORT_BY_MODIFIED: Binding = Binding::plain(Key::m), after SORT_BY;
+        SORT_BY_SIZE: Binding = Binding::plain(Key::s), after SORT_BY;
+        SORT_BY_TYPE: Binding = Binding::plain(Key::e), after SORT_BY;
 
         COPY_AS: Binding = Binding::plain(Key::c);
-        COPY_AS_PATH: Binding = Binding::plain(Key::c);
-        COPY_AS_NAME: Binding = Binding::plain(Key::n);
+        COPY_AS_PATH: Binding = Binding::plain(Key::c), after COPY_AS;
+        COPY_AS_NAME: Binding = Binding::plain(Key::n), after COPY_AS;
 
         ACTIONS: Binding = Binding::plain(Key::semicolon);
-        ACTIONS_TERMINAL: Binding = Binding::plain(Key::t);
-        ACTIONS_COMPRESS: Binding = Binding::plain(Key::c);
-        ACTIONS_EXTRACT: Binding = Binding::plain(Key::e);
-        ACTIONS_EXTRACT_TO: Binding = Binding::shift(Key::e);
+        ACTIONS_TERMINAL: Binding = Binding::plain(Key::t), after ACTIONS;
+        ACTIONS_COMPRESS: Binding = Binding::plain(Key::c), after ACTIONS;
+        ACTIONS_EXTRACT: Binding = Binding::plain(Key::e), after ACTIONS;
+        ACTIONS_EXTRACT_TO: Binding = Binding::shift(Key::e), after ACTIONS;
         ACTIONS_NUMBERS: Digits = Digits::after(ACTIONS, 9, true);
 
         TAB_CHORD: Binding = Binding::plain(Key::t);
-        TAB_CHORD_NEW: Binding = Binding::plain(Key::n);
-        TAB_CHORD_CLOSE: Binding = Binding::plain(Key::x);
-        TAB_CHORD_PREVIOUS: Binding = Binding::plain(Key::t);
+        TAB_CHORD_NEW: Binding = Binding::plain(Key::n), after TAB_CHORD;
+        TAB_CHORD_CLOSE: Binding = Binding::plain(Key::x), after TAB_CHORD;
+        TAB_CHORD_PREVIOUS: Binding = Binding::plain(Key::t), after TAB_CHORD;
         TAB_CHORD_NUMBERS: Digits = Digits::after(TAB_CHORD, 9, true);
     }
     unlisted {

@@ -29,15 +29,6 @@ catalog! {
         DELETE_PERMANENTLY: Binding = Binding::shift(Key::Delete);
         FOCUS_NEXT: Binding = Binding::plain(Key::Tab);
         FOCUS_PREVIOUS: Binding = Binding::shift(Key::Tab);
-        /// Tab where it completes a path rather than moving focus.
-        COMPLETE: Binding = Binding::plain(Key::Tab);
-
-        EXTEND_UP: Binding = Binding::shift(Key::Up);
-        EXTEND_DOWN: Binding = Binding::shift(Key::Down);
-        EXTEND_PAGE_UP: Binding = Binding::shift(Key::Page_Up);
-        EXTEND_PAGE_DOWN: Binding = Binding::shift(Key::Page_Down);
-        /// GTK's list views handle it; the reference names it.
-        SELECTION_TOGGLE: Binding = Binding::ctrl(Key::space);
 
         HISTORY_BACK: Binding = Binding::alt(Key::Left);
         HISTORY_FORWARD: Binding = Binding::alt(Key::Right);
@@ -45,6 +36,18 @@ catalog! {
         HOME_FOLDER: Binding = Binding::alt(Key::Home);
         OPEN_IN_NEW_TAB: Binding = Binding::ctrl(Key::Return);
         OPEN_IN_NEW_WINDOW: Binding = Binding::shift(Key::Return);
+    }
+    default_only {
+        EXTEND_UP: Binding = Binding::shift(Key::Up);
+        EXTEND_DOWN: Binding = Binding::shift(Key::Down);
+        EXTEND_PAGE_UP: Binding = Binding::shift(Key::Page_Up);
+        EXTEND_PAGE_DOWN: Binding = Binding::shift(Key::Page_Down);
+        /// GTK's list views handle it; the reference names it.
+        SELECTION_TOGGLE: Binding = Binding::ctrl(Key::space);
+    }
+    tenxer_only {
+        /// Tab where it completes a path rather than moving focus.
+        COMPLETE: Binding = Binding::plain(Key::Tab);
     }
     unlisted {
         // Range selection that GTK performs once the dispatcher passes the key on.

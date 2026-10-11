@@ -14,7 +14,8 @@ catalog! {
         MEDIA_MUTE: Binding = Binding::ctrl_alt(Key::m);
         MEDIA_PREVIOUS: Binding = Binding::ctrl_alt(Key::less);
         MEDIA_NEXT: Binding = Binding::ctrl_alt(Key::greater);
-
+    }
+    tenxer_only {
         TENXER_MEDIA_MUTE: Binding = Binding::plain(Key::m);
         TENXER_MEDIA_PREVIOUS: Binding = Binding::plain(Key::less);
         TENXER_MEDIA_NEXT: Binding = Binding::plain(Key::greater);

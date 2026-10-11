@@ -191,8 +191,9 @@ and **Ctrl+A** clears it first.
 
 ## Adding or changing a shortcut
 
-1. Add the binding to `ui::keys::bindings` and match it in the handler with
-   `press.is(…)` or `press.digit(…)`.
+1. Add the binding to `ui::keys::bindings`, in the catalog block for the F1
+   maps that list it, and match it in the handler with `press.is(…)` or
+   `press.digit(…)`.
 2. Reference the same constant from its F1 row in `ui/shortcut_reference.rs`
    and from any context hint. The label renders itself; translate only the
    action text, in every catalog (see
@@ -209,8 +210,9 @@ and **Ctrl+A** clears it first.
 US, Russian, Ukrainian, Greek, Hebrew, French AZERTY, German QWERTZ, Dvorak,
 Caps Lock, and a Russian-only keymap. They also cover label rendering
 (notation, translated key names, chords, digit ranges) and catalog completeness:
-every catalog binding appears in at least one F1 scope (mode, 10xer, chooser) or
-is explicitly marked as unlisted. Run them with
+every catalog binding has a row of its own in each F1 map its catalog block
+names (`listed` for both, `default_only`, `tenxer_only`), a chord's second key
+right after its first, or is explicitly marked as unlisted. Run them with
 `./scripts/test-headless.py keys::`, and run `./scripts/test-headless.py i18n::`
 after changing key names.
 

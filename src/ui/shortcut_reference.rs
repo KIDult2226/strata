@@ -1158,14 +1158,17 @@ fn tenxer_hint(hint: ContextHint) -> Option<Keys> {
     }))
 }
 
-/// Every key combination the reference shows in some scope, with the keys its
-/// actions name.
+/// The distinct rows of one map across all its scopes, each as the keys it
+/// shows: its own and those its action names.
 #[cfg(test)]
-pub(in crate::ui) fn listed_keys() -> Vec<Keys> {
-    let mut scopes = Vec::new();
+pub(in crate::ui) fn reference_rows(tenxer: bool) -> Vec<Vec<Keys>> {
+    let mut sections = Vec::new();
     for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
-        scopes.push(default_sections(mode));
-        scopes.push(tenxer_sections(mode, None));
+        if !tenxer {
+            sections.extend(default_sections(mode));
+            continue;
+        }
+        sections.extend(tenxer_sections(mode, None));
         for request in [
             ChooserRequest::Files,
             ChooserRequest::Folders,
@@ -1173,23 +1176,26 @@ pub(in crate::ui) fn listed_keys() -> Vec<Keys> {
             ChooserRequest::SaveFiles,
         ] {
             for multiple in [false, true] {
-                scopes.push(tenxer_sections(
+                sections.extend(tenxer_sections(
                     mode,
                     Some(ChooserScope { request, multiple }),
                 ));
             }
         }
     }
-    scopes
-        .into_iter()
-        .flatten()
-        .flat_map(|section| section.rows)
-        .flat_map(|shortcut| {
+    let mut rows: Vec<Shortcut> = Vec::new();
+    for shortcut in sections.into_iter().flat_map(|section| section.rows) {
+        if !rows.contains(&shortcut) {
+            rows.push(shortcut);
+        }
+    }
+    rows.into_iter()
+        .map(|shortcut| {
             let mentioned = match shortcut.mention {
                 Some(Mention::Keys(keys)) => Some(keys),
                 Some(Mention::Held(_)) | None => None,
             };
-            std::iter::once(shortcut.keys).chain(mentioned)
+            std::iter::once(shortcut.keys).chain(mentioned).collect()
         })
         .collect()
 }
