@@ -337,7 +337,11 @@ fn localized_reference_names_keys_in_the_interface_language() {
                     "{query} finds an alternative that shares its modifiers: {matches:?}"
                 );
             }
-            for (query, keys) in [("ctrl+-", "Strg++ / − / 0"), ("g -", "g + / g −")] {
+            for (query, keys) in [
+                ("ctrl+-", "Strg++ / − / 0"),
+                ("g -", "g + / g −"),
+                ("1-9", "Strg+Umschalt+1–9 / 0"),
+            ] {
                 footer.search.set_text(query);
                 settle();
                 let matches = reference_labels(&footer);

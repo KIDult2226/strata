@@ -42,6 +42,12 @@ pub(crate) enum ChooserRequest {
     SaveFiles,
 }
 
+/// Lowercase, with the `−` and the `–` of digit ranges that labels show read
+/// as a typed `-`.
+pub(crate) fn search_folded(text: &str) -> String {
+    text.to_lowercase().replace(['\u{2212}', '\u{2013}'], "-")
+}
+
 pub(crate) struct ReferenceSection {
     pub title: &'static str,
     pub rows: Vec<Shortcut>,
@@ -101,10 +107,10 @@ impl Shortcut {
         self.action_in(&rust_i18n::locale())
     }
 
-    /// Matches keys and actions in the interface language or English; a typed
-    /// `-` finds the `−` labels show.
+    /// Matches keys and actions in the interface language or English. `query`
+    /// is already `search_folded`.
     pub(crate) fn matches(&self, query: &str) -> bool {
-        let found = |text: String| text.to_lowercase().replace('\u{2212}', "-").contains(query);
+        let found = |text: String| search_folded(&text).contains(query);
         query.is_empty()
             || found(keys::search_text(&self.keys))
             || found(self.key_text())

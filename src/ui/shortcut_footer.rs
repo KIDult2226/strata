@@ -1762,7 +1762,7 @@ fn render_reference(
     while let Some(child) = reference.first_child() {
         reference.remove(&child);
     }
-    let query = query.trim().to_lowercase().replace('\u{2212}', "-");
+    let query = super::shortcut_reference::search_folded(query.trim());
     let mut found = false;
     for section in super::shortcut_reference::reference_sections(scope) {
         if selected != "All" && selected != section.title {
