@@ -320,6 +320,7 @@ them on the host.
 | Accessibility bus and registry | `at-spi2-core` | `at-spi2-core` |
 | Python AT-SPI bindings | `python-gobject` | `python3-gi`, `gir1.2-atspi-2.0` |
 | Private session bus | `dbus` | `dbus-daemon`, `dbus-bin` |
+| Keyboard layouts | `xorg-setxkbmap` | `x11-xkb-utils` |
 | Screen capture | `imagemagick` | `imagemagick` |
 | Font | `cantarell-fonts` | `fonts-cantarell` |
 
@@ -468,6 +469,32 @@ reports that native origin directly. Controls are still located only by
 accessibility semantics. AT-SPI's older `push button` spelling is normalized to
 `button`, and selection tests assert actual selected-state transitions instead
 of depending on optional `SELECTABLE` state exports for unselected rows.
+
+#### Keyboard layouts
+
+The `keyboard_layout` fixture switches the layout live, while the application
+runs, using the layouts in `harness/keyboard_layout.py`:
+
+```python
+from harness.keyboard_layout import RUSSIAN
+
+def test_search(strata, keyboard_layout):
+    with keyboard_layout(RUSSIAN):
+        strata.keyboard.press("ctrl+k")
+        strata.editable_field()
+```
+
+`setxkbmap -display` loads the layouts into the private Xvfb, and an XKB group
+lock selects the active one, as a layout switch shortcut does. Leaving the block
+unlocks the group and every modifier, restores the US layout, and fails the
+scenario if the keyboard is not back in that state. Never change the desktop's
+layout, and never run `setxkbmap` without `-display`.
+
+XTest reads the keymap once, from the first group of the default US layout, so
+key names mean US key positions: under `RUSSIAN`, `press("ctrl+c")` presses the
+key that types с, and `type_text` types what those keys produce. Wait for each
+key's effect inside the block. GDK may read the keymap only when it handles the
+event, and by then a finished block has restored US.
 
 ## Failure artifacts
 
