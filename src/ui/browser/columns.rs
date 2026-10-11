@@ -1315,7 +1315,6 @@ impl ViewState {
         let recursive_search_active = Rc::new(Cell::new(false));
         let hits = Rc::new(RefCell::new(ColumnHits::default()));
         let syncing_selection = Rc::new(Cell::new(false));
-        let modified_selection = Rc::new(Cell::new(false));
         let focused_filtered = Rc::new(Cell::new(None::<u32>));
         let weak_selection_state = Rc::downgrade(self);
         let map_for_selection = map.clone();
@@ -1559,7 +1558,6 @@ impl ViewState {
             depth,
             &map,
             &selection,
-            &modified_selection,
             &recursive_search_active,
             &search_results,
             &hits,
@@ -1695,22 +1693,6 @@ impl ViewState {
                 .map_or(glib::Propagation::Proceed, |_| glib::Propagation::Stop)
         });
         list.add_controller(return_to_filter);
-
-        let selection_keys = gtk::EventControllerKey::new();
-        selection_keys.set_propagation_phase(gtk::PropagationPhase::Capture);
-        let modified_for_key = modified_selection.clone();
-        selection_keys.connect_key_pressed(move |_, _, _, modifiers| {
-            modified_for_key.set(
-                modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK)
-                    || modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK),
-            );
-            glib::Propagation::Proceed
-        });
-        let modified_for_key = modified_selection.clone();
-        selection_keys.connect_key_released(move |_, _, _, _| {
-            modified_for_key.set(false);
-        });
-        list.add_controller(selection_keys);
 
         let weak_browser = Rc::downgrade(&self.browser);
         let weak_state_for_activate = Rc::downgrade(self);

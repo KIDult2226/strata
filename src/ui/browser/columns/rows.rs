@@ -61,16 +61,11 @@ pub(super) struct ColumnRows {
     pub(super) scrolling: Rc<Cell<bool>>,
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "rows read the column's directory map, selection, and search hits it owns"
-)]
 pub(super) fn column_rows(
     state: &Rc<ViewState>,
     depth: usize,
     map: &ViewMap,
     selection: &gtk::MultiSelection,
-    modified_selection: &Rc<Cell<bool>>,
     recursive_search_active: &Rc<Cell<bool>>,
     search_results: &Rc<RefCell<Vec<SearchItem>>>,
     hits: &Rc<RefCell<super::ColumnHits>>,
@@ -82,7 +77,6 @@ pub(super) fn column_rows(
     let search_active_for_factory = recursive_search_active.clone();
     let search_results_for_factory = search_results.clone();
     let weak_state = Rc::downgrade(state);
-    let modified_selection_for_rows = modified_selection.clone();
     let selection_for_rows = selection.clone();
     let map_for_hover = map.clone();
     factory.connect_setup(move |_, item| {
@@ -375,7 +369,6 @@ pub(super) fn column_rows(
         selection_click.set_propagation_phase(gtk::PropagationPhase::Capture);
         let clicked_item = item.downgrade();
         let selection_for_click = selection_for_rows.clone();
-        let modified_for_click = modified_selection_for_rows.clone();
         let map_for_click = map_for_hover.clone();
         let search_active_for_click = search_active_for_factory.clone();
         let search_results_for_click = search_results_for_factory.clone();
@@ -484,7 +477,6 @@ pub(super) fn column_rows(
             } else {
                 (false, None)
             };
-            modified_for_click.set(control || shift);
             if !shift && let Some(anchor) = change.anchor {
                 anchor_at(&weak_state_for_click, depth, &map_for_click, anchor);
             }
@@ -507,7 +499,6 @@ pub(super) fn column_rows(
             {
                 item_widget.grab_focus();
             }
-            modified_for_click.set(false);
 
             if filtered {
                 if press_count == 1
