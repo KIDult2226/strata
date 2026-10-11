@@ -78,15 +78,32 @@ pub(crate) fn label(keys: &Keys) -> String {
 }
 
 /// Searchable text: the label in the interface language and in English, so
-/// either spelling finds a shortcut.
+/// either spelling finds a shortcut, with shared modifiers also written out
+/// so that **Ctrl+0** finds **Ctrl++ / − / 0**.
 pub(crate) fn search_text(keys: &Keys) -> String {
-    let local = label(keys);
-    let english = label_in("en", keys);
-    if local == english {
-        local
-    } else {
-        format!("{local} {english}")
+    let local = rust_i18n::locale();
+    let mut texts = Vec::new();
+    for locale in [&*local, "en"] {
+        for text in [label_in(locale, keys), written_out(locale, keys)] {
+            if !texts.contains(&text) {
+                texts.push(text);
+            }
+        }
     }
+    texts.join(" ")
+}
+
+/// The label with each alternative's modifiers written out.
+fn written_out(locale: &str, keys: &Keys) -> String {
+    let alternatives = match keys {
+        Keys::Any(bindings) => bindings
+            .iter()
+            .map(|binding| binding_label(locale, *binding))
+            .collect::<Vec<_>>(),
+        Keys::Mixed(keys) => keys.iter().map(|keys| written_out(locale, keys)).collect(),
+        Keys::One(_) | Keys::Chord(_) | Keys::Digits(_) => return label_in(locale, keys),
+    };
+    alternatives.join(" / ")
 }
 
 /// Held modifiers alone, such as **Ctrl+Shift** in "hold Ctrl+Shift for numbers".

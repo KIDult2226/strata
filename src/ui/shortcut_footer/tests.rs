@@ -324,6 +324,19 @@ fn localized_reference_names_keys_in_the_interface_language() {
                 ),
                 "English key names find keys named in German action text: {matches:?}"
             );
+            for query in ["strg+0", "ctrl+0"] {
+                footer.search.set_text(query);
+                settle();
+                let matches = reference_labels(&footer);
+                assert!(
+                    reference_pairs(
+                        &matches,
+                        "Strg++ / − / 0",
+                        "Textgröße erhöhen / verringern / zurücksetzen"
+                    ),
+                    "{query} finds an alternative that shares its modifiers: {matches:?}"
+                );
+            }
         },
     );
 }
