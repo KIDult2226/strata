@@ -458,11 +458,14 @@ fn digit_value(key: Key) -> Option<u8> {
 }
 
 /// GDK keycodes are evdev codes plus 8 on X11 and Wayland; 10–19 are the digit
-/// row. Elsewhere a key counts as the digit it types, such as the Hungarian 0
-/// left of 1, but not an AltGr digit.
+/// row, which counts by position at level 0 or 1. GDK reports no AltGr
+/// modifier, so at a higher level the row counts only a digit it types.
+/// Elsewhere a key counts as the digit it types at level 0 or 1, such as the
+/// Hungarian 0 left of 1.
 fn position_digit(keycode: u32, typed: Key, level: u32) -> Option<u8> {
     match keycode {
-        10..=19 => Some(((keycode - 9) % 10) as u8),
+        10..=19 if level <= 1 => Some(((keycode - 9) % 10) as u8),
+        10..=19 => digit_value(typed),
         _ => KEYPAD_DIGITS
             .iter()
             .position(|digit| *digit == typed)

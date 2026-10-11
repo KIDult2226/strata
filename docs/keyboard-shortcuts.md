@@ -30,6 +30,9 @@ Shortcuts follow the key's label first, then its physical position:
   differ from US. A chord's digit step (**t 1**, **g 1**, **; 1**) also accepts
   the Shift AZERTY types digits with. A digit typed elsewhere counts too, such
   as the Hungarian 0 left of 1, and keypad digits count when Num Lock is on.
+  With AltGr, a top-row key counts only when it types a digit, as on
+  Lithuanian; AltGr symbols there, such as the AZERTY `~` and `@` or the `\` of
+  German Mac layouts, stay symbols.
 - **`+` and `−` win over a digit position.** Where a top-row key types `+` or
   `−`, it acts as that symbol: on Swiss German, Ctrl and the `+` key (Shift+1)
   is **Ctrl++**, not tab 1, and on AZERTY **g** then the `−` key unpins.
@@ -176,8 +179,11 @@ formatter's label.
    the event, because Caps Lock raises the event's level for letters. GDK
    keycodes are evdev codes plus 8 on both X11 and Wayland. If neither source
    has a Latin key, keep the original.
-3. Digit-row keycodes 10–19 map to 1–9 and 0 regardless of the key they type;
-   another key counts as the digit it types at level 0 or 1. Digit matching
+3. At level 0 or 1, digit-row keycodes 10–19 map to 1–9 and 0 regardless of
+   the key they type. At a higher level (AltGr, or a Caps Lock level some
+   layouts add) a digit-row key counts only as the digit it types, because GDK
+   reports no AltGr modifier. Another key counts as the digit it types at level
+   0 or 1. Digit matching
    compares the event's modifier state before consumed modifiers are removed,
    so **Ctrl+1** and **Ctrl+Shift+1** stay distinct on every layout.
 4. Keypad keys become the main keys they share a label with. Keypad digits stay
@@ -270,8 +276,8 @@ matches it, so handler tests stay layout-neutral and the layout cases live in
 the normalizer tests and end-to-end scenarios.
 
 `ui::keys::tests` drives the pure normalizer from hand-written keymap rows for
-US, Russian, Ukrainian, Greek, Hebrew, French AZERTY, German QWERTZ, Dvorak,
-Caps Lock, and a Russian-only keymap. They also cover label rendering
+US, Russian, Ukrainian, Greek, Hebrew, French AZERTY, German QWERTZ, Hungarian,
+Lithuanian, Dvorak, Caps Lock, and a Russian-only keymap. They also cover label rendering
 (notation, translated key names, chords, digit ranges) and catalog completeness:
 every catalog binding has a row of its own in each F1 map its catalog block
 names (`listed` for both, `default_only`, `tenxer_only`), a chord's second key

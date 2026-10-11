@@ -58,6 +58,7 @@ const DE: Layout = &[
     (52, [Key::y, Key::Y]),
 ];
 const DVORAK: Layout = &[(54, [Key::j, Key::J])];
+const LT: Layout = &[(10, [Key::aogonek, Key::Aogonek])];
 const HU: Layout = &[
     (19, [Key::odiaeresis, Key::Odiaeresis]),
     (49, [Key::_0, Key::section]),
@@ -483,6 +484,43 @@ fn digit_row_keys_are_digits_by_position() {
         CTRL_SHIFT,
     );
     assert!(!hu_section.is(Binding::ctrl_shift(Key::_0)));
+
+    // GDK reports no AltGr modifier: above level 1 the row counts only a digit
+    // it types, as Lithuanian does, never an AltGr symbol.
+    let lt_ctrl_1 = press(&[LT], 0, 10, 2, Key::_1, (Key::_1, CTRL), CTRL);
+    assert!(lt_ctrl_1.is(Binding::ctrl(Key::_1)));
+    let azerty_ctrl_superscript = press(
+        &[FR],
+        0,
+        10,
+        2,
+        Key::onesuperior,
+        (Key::onesuperior, CTRL),
+        CTRL,
+    );
+    assert!(!azerty_ctrl_superscript.is(Binding::ctrl(Key::_1)));
+    let azerty_tilde = press(
+        &[FR],
+        0,
+        11,
+        2,
+        Key::asciitilde,
+        (Key::asciitilde, NONE),
+        NONE,
+    );
+    assert_eq!(azerty_tilde.digit_in(chord_step), None);
+    // German Mac types \ with Shift+AltGr+7: Ctrl+\, not tab 7.
+    let de_mac_backslash = press(
+        &[DE],
+        0,
+        16,
+        3,
+        Key::backslash,
+        (Key::backslash, CTRL),
+        CTRL_SHIFT,
+    );
+    assert_eq!(de_mac_backslash.digit_in(tab_numbers), None);
+    assert!(de_mac_backslash.is(Binding::ctrl(Key::backslash)));
 }
 
 #[test]
