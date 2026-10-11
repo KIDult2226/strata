@@ -497,7 +497,8 @@ pub(super) fn type_to_search_query(press: &KeyPress) -> Option<TypeToSearchQuery
     if press.is(SPACE.ignoring(ModifierType::SHIFT_MASK)) {
         return None;
     }
-    if press.is(FILTER_SLASH) {
+    // A letter that reads as `/` only through the layout fallback is typed.
+    if press.is(FILTER_SLASH) && !press.used_fallback() {
         return Some(TypeToSearchQuery::Empty);
     }
     press.text().map(TypeToSearchQuery::Character)

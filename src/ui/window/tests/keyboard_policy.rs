@@ -151,6 +151,11 @@ fn type_to_search_uses_slash_to_open_an_empty_filter() {
         type_to_search_query(&press(Key::slash, NONE)),
         Some(TypeToSearchQuery::Empty)
     );
+    // Icelandic types þ on the US `/` key.
+    assert_eq!(
+        type_to_search_query(&KeyPress::from_signal(Key::thorn, 61, NONE)),
+        Some(TypeToSearchQuery::Character('þ'))
+    );
 }
 
 #[test]
