@@ -275,6 +275,15 @@ fn context_hints_follow_the_active_map() {
             let hints = label_texts(&menu);
             assert!(hints.iter().any(|hint| hint == "Space"), "{hints:?}");
             assert!(hints.iter().any(|hint| hint == "y"), "{hints:?}");
+            let properties = hints
+                .iter()
+                .position(|hint| hint == "Properties")
+                .and_then(|index| hints.get(index + 1));
+            assert_eq!(
+                properties.map(String::as_str),
+                Some("Alt+Enter"),
+                "{hints:?}"
+            );
             manager.set_type_to_search(true);
             let hints = label_texts(&menu);
             assert!(
