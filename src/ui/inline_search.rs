@@ -15,6 +15,10 @@ use std::{
 
 use gtk::{glib, prelude::*};
 
+use super::keys::{
+    self,
+    bindings::{DOWN, ENTER, UP},
+};
 use crate::{
     app::Browser,
     model::{FileEntry, Location},
@@ -659,34 +663,25 @@ pub(super) fn wrap(
     let keys = gtk::EventControllerKey::new();
     keys.set_propagation_phase(gtk::PropagationPhase::Capture);
     let weak = Rc::downgrade(&state);
-    keys.connect_key_pressed(move |_, key, _, modifiers| {
+    keys::on_press(&keys, move |_, press| {
         let Some(state) = weak.upgrade() else {
             return glib::Propagation::Proceed;
         };
-        if !state.session.is_active()
-            || modifiers.intersects(
-                gtk::gdk::ModifierType::CONTROL_MASK
-                    | gtk::gdk::ModifierType::ALT_MASK
-                    | gtk::gdk::ModifierType::SUPER_MASK
-                    | gtk::gdk::ModifierType::SHIFT_MASK,
-            )
-        {
+        if !state.session.is_active() {
             return glib::Propagation::Proceed;
         }
-        let current = state.collection.current_position();
-        if key == gtk::gdk::Key::Up {
+        if press.is(UP) {
             return glib::Propagation::Stop;
         }
-        if key == gtk::gdk::Key::Down {
+        if press.is(DOWN) {
+            let current = state.collection.current_position();
             if let Some(window) = state.stack.root().and_downcast::<gtk::Window>() {
                 window.set_focus_visible(true);
             }
             state.collection.focus(current.unwrap_or(0), true);
             return glib::Propagation::Stop;
         }
-        if matches!(key, gtk::gdk::Key::Return | gtk::gdk::Key::KP_Enter)
-            && state.activate(current.unwrap_or(0))
-        {
+        if press.is(ENTER) && state.activate(state.collection.current_position().unwrap_or(0)) {
             return glib::Propagation::Stop;
         }
         glib::Propagation::Proceed
@@ -696,17 +691,11 @@ pub(super) fn wrap(
     let return_to_filter = gtk::EventControllerKey::new();
     return_to_filter.set_propagation_phase(gtk::PropagationPhase::Capture);
     let weak = Rc::downgrade(&state);
-    return_to_filter.connect_key_pressed(move |_, key, _, modifiers| {
+    keys::on_press(&return_to_filter, move |_, press| {
         let Some(state) = weak.upgrade() else {
             return glib::Propagation::Proceed;
         };
-        if key != gtk::gdk::Key::Up
-            || modifiers.intersects(
-                gtk::gdk::ModifierType::CONTROL_MASK
-                    | gtk::gdk::ModifierType::SHIFT_MASK
-                    | gtk::gdk::ModifierType::ALT_MASK
-                    | gtk::gdk::ModifierType::SUPER_MASK,
-            )
+        if !press.is(UP)
             || !state
                 .collection
                 .current_position()
