@@ -5,6 +5,7 @@ import pytest
 from gi.repository import Atspi
 
 from harness.interaction import MODIFIER_KEYSYMS
+from harness.keyboard_layout import QWERTZ
 from harness.modes import ALL_MODES
 
 
@@ -66,7 +67,7 @@ def test_folder_click_keeps_tab_name_until_release_and_keyboard_focus_still_rena
     pytest.param(False, marks=pytest.mark.preferences(tenxer_mode=False)),
     pytest.param(True, marks=pytest.mark.preferences(tenxer_mode=True)),
 ])
-def test_tabs_keep_locations_and_support_numbered_shortcuts(strata, tenxer):
+def test_tabs_keep_locations_and_support_numbered_shortcuts(strata, keyboard_layout, tenxer):
     root = strata.fixture.root.name
     strata.select_entry("todo.txt")
     strata.keyboard.press("ctrl+t")
@@ -90,8 +91,10 @@ def test_tabs_keep_locations_and_support_numbered_shortcuts(strata, tenxer):
     selected_tab(strata, "archive")
     strata.keyboard.press("ctrl+shift+Tab")
     selected_tab(strata, root)
-    strata.keyboard.press("ctrl+shift+2")
-    selected_tab(strata, "archive")
+    # German Shift+2 types ", yet the digit row still numbers the tabs.
+    with keyboard_layout(QWERTZ):
+        strata.keyboard.press("ctrl+shift+2")
+        selected_tab(strata, "archive")
     strata.keyboard.press("ctrl+t")
     strata.keyboard.press("alt+Up")
     strata.wait_for_directory(root)

@@ -6,6 +6,7 @@ import time
 import pytest
 
 from harness.artifacts import ArtifactCollector
+from harness.keyboard_layout import RUSSIAN_ONLY, US
 from harness.modes import ALL_MODES, COLUMNS_AND_ONE
 from harness.screenshots import capture
 from harness.tree import Atspi
@@ -227,8 +228,17 @@ def wait_for_edit_closed(strata):
     assert "Gtk-CRITICAL" not in strata.application.log()
 
 
-@pytest.mark.parametrize("kind,via_menu", [("folder", False), ("folder", True), ("file", True)])
-def test_new_item_exists_before_typing_and_backspace_clears_its_selected_name(strata, kind, via_menu):
+# With no Latin layout configured, GTK's own text bindings find no A key.
+NEW_ITEM_CASES = [
+    pytest.param(kind, via_menu, US, id=f"{kind}-{via_menu}")
+    for kind, via_menu in [("folder", False), ("folder", True), ("file", True)]
+] + [pytest.param("file", True, RUSSIAN_ONLY, id="file-True-ru-only")]
+
+
+@pytest.mark.parametrize("kind,via_menu,layout", NEW_ITEM_CASES)
+def test_new_item_exists_before_typing_and_backspace_clears_its_selected_name(
+    strata, keyboard_layout, kind, via_menu, layout
+):
     strata.select_entry("readme.md")
     field = start_creation(strata, kind, via_menu)
     original = "new " + kind
@@ -238,9 +248,10 @@ def test_new_item_exists_before_typing_and_backspace_clears_its_selected_name(st
     if kind == "file":
         assert path.read_bytes() == b""
     strata.keyboard.press("End")
-    strata.keyboard.press("ctrl+a")
-    strata.keyboard.press("BackSpace")
-    strata.wait(lambda: field.text == "", "Ctrl+A and Backspace to clear the entire default name")
+    with keyboard_layout(layout):
+        strata.keyboard.press("ctrl+a")
+        strata.keyboard.press("BackSpace")
+        strata.wait(lambda: field.text == "", "Ctrl+A and Backspace to clear the entire default name")
     strata.keyboard.press("Return")
     wait_for_edit_closed(strata)
     strata.entry(original)

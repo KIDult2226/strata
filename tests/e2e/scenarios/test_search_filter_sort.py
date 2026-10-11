@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import pytest
 
+from harness.keyboard_layout import RUSSIAN_ONLY, US
 from harness.modes import ALL_MODES, COLUMNS_AND_ONE
 
 ROOT_ENTRIES = ["archive", "documents", "pictures", "readme.md", "todo.txt"]
@@ -555,15 +556,18 @@ def test_global_search_reveal_into_a_visited_list_folder_keeps_the_target(strata
     strata.wait_for_focused_entry(target.name)
 
 
-def test_global_search_finds_a_file_under_home(strata, root):
+# With no Latin layout configured, GTK's own matching finds no K key.
+@pytest.mark.parametrize("layout", [US, RUSSIAN_ONLY], ids=lambda layout: layout.name)
+def test_global_search_finds_a_file_under_home(strata, keyboard_layout, root, layout):
     """Ctrl+K searches the home directory, not the browsed location."""
 
     nested = strata.environment.home / "reports" / "quarterly-summary.txt"
     nested.parent.mkdir(parents=True, exist_ok=True)
     nested.write_text("summary\n")
 
-    strata.keyboard.press("ctrl+k")
-    field = strata.editable_field()
+    with keyboard_layout(layout):
+        strata.keyboard.press("ctrl+k")
+        field = strata.editable_field()
     strata.keyboard.type_text("quarterly")
     strata.wait(lambda: field.text == "quarterly", "the query to be typed")
 

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import pytest
+from harness.keyboard_layout import RUSSIAN, US
 from harness.modes import (
     ALL_MODES,
     COLUMNS_AND_ONE,
@@ -14,11 +15,30 @@ from harness.modes import (
 
 ROOT_ENTRIES = ["archive", "documents", "pictures", "readme.md", "todo.txt"]
 
+# 10xer moves the cursor and keeps the selection. On Russian its j key types о.
+ARROW_CASES = [
+    pytest.param(
+        mode.values[0], bindings, US, "todo.txt", marks=mode.marks, id=f"{bindings}-{mode.id}"
+    )
+    for bindings in ("arrows", "hjkl")
+    for mode in ALL_MODES
+] + [
+    pytest.param(
+        "Columns",
+        "hjkl",
+        RUSSIAN,
+        "readme.md",
+        marks=pytest.mark.preferences(browser_mode="columns", tenxer_mode=True),
+        id="hjkl-columns-tenxer-ru",
+    )
+]
+
 
 @pytest.mark.preferences(type_to_search=False)
-@pytest.mark.parametrize("mode", ALL_MODES)
-@pytest.mark.parametrize("bindings", ["arrows", "hjkl"])
-def test_arrow_keys_move_focus_and_selection(strata, mode, bindings):
+@pytest.mark.parametrize("mode, bindings, layout, selected", ARROW_CASES)
+def test_arrow_keys_move_focus_and_selection(
+    strata, keyboard_layout, mode, bindings, layout, selected
+):
     assert strata.entry_names() == ROOT_ENTRIES
 
     # A file, so that a single click never navigates in any presentation.
@@ -30,15 +50,16 @@ def test_arrow_keys_move_focus_and_selection(strata, mode, bindings):
     previous_key = PREVIOUS_ENTRY_KEY[mode]
     if bindings == "hjkl":
         next_key, previous_key = aliases[next_key], aliases[previous_key]
-    strata.keyboard.press(next_key)
-    strata.wait_for_focused_entry("todo.txt")
-    strata.wait(
-        lambda: strata.selected_names() == ["todo.txt"],
-        "the selection to follow focus",
-    )
+    with keyboard_layout(layout):
+        strata.keyboard.press(next_key)
+        strata.wait_for_focused_entry("todo.txt")
+        strata.wait(
+            lambda: strata.selected_names() == [selected],
+            f"the selection to be {selected} after the move",
+        )
 
-    strata.keyboard.press(previous_key)
-    strata.wait_for_focused_entry("readme.md")
+        strata.keyboard.press(previous_key)
+        strata.wait_for_focused_entry("readme.md")
 
 
 @pytest.mark.preferences(arrow_navigation_scoped=True, type_to_search=False)

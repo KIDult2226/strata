@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import pytest
 
+from harness.keyboard_layout import AZERTY, US
+
 MODES = ["Columns", "Icons", "List"]
 MODE_SHORTCUTS = {"Columns": "ctrl+1", "Icons": "ctrl+2", "List": "ctrl+3"}
 STORED_MODES = {"Columns": '"columns"', "Icons": '"icons"', "List": '"list"'}
@@ -27,11 +29,16 @@ def test_appearance_menu_switches_presentation(strata, mode):
     )
 
 
-def test_shortcut_round_trip_preserves_selection_and_updates_the_appearance_menu(strata):
+# AZERTY types & é " on the digit row without Shift; the row still switches views.
+@pytest.mark.parametrize("layout", [US, AZERTY], ids=lambda layout: layout.name)
+def test_shortcut_round_trip_preserves_selection_and_updates_the_appearance_menu(
+    strata, keyboard_layout, layout
+):
     strata.select_entry("todo.txt")
     for mode in ["Icons", "List", "Columns"]:
-        strata.keyboard.press(MODE_SHORTCUTS[mode])
-        strata.wait_for_view(mode)
+        with keyboard_layout(layout):
+            strata.keyboard.press(MODE_SHORTCUTS[mode])
+            strata.wait_for_view(mode)
         assert strata.pane_names()[0] == strata.fixture.root.name
         assert "documents" in strata.entry_names()
         strata.wait(
