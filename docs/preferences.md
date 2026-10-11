@@ -376,7 +376,7 @@ While the mode is on, the 10xer mode row and the F1 / `~` reference are labeled 
 It hides window Search and pane Close/filter/refresh/sort chrome in
 interactive browsers and the portal file chooser (window Close and chooser
 Accept/Cancel stay; List column headings stay),
-disables type-to-search and the conflicting default accelerators, and installs
+disables type-to-search and the conflicting default shortcuts, and installs
 the Yazi-style map with footer prompts (`/` `?` `f` `s` `a` `r` `g Space`
 `z`/`Z`), `g`-chord keycaps, and non-conflicting GUI keys (`Ctrl+C`/`X`/`V`,
 `F2`, `F5`, `Delete`, …). Keyboard navigation stays in the Columns, List, and
@@ -390,7 +390,7 @@ prompts and credentials, chords, find highlights, hidden filters/search
 (including forced recursion from **s**), and a keyboard folder peek. Leaving visual mode preserves the ordinary listing's filled selection;
 leaving preview keyboard ownership restores its previous focusability without
 closing the drawer. Default **Ctrl+F** then follows the saved **Include subfolders**
-choice again. Initial preference binding applies chrome and accelerators without
+choice again. Initial preference binding applies chrome without
 transition teardown or a file-list focus grab at disabled startup.
 Context-menu shortcut hints and the F1 / `~` reference list the currently
 active map (including the kept Ctrl/F-key conventions). **Type to search**,

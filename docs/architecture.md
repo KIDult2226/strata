@@ -400,13 +400,19 @@ focus traversal, transient dismissal, then item/directory navigation. The privat
 introducing another browser controller. A stage returning `None` continues through Strata's
 handlers; `Some(Propagation::Proceed)` ends dispatch and leaves the event to GTK. In
 particular, editable controls and native single-pane selection must not fall through to
-browser commands. GTK runs the `DEFAULT_ACCELS` window accelerators (`ui/window.rs`) only
-after the dispatcher yields, which is exactly when a modal or an inline edit owns input, so
-`composition::add_guarded_window_action` installs their `win.*` actions with a gate: they
-do nothing while a modal layer other than the action's own (the search palette) is on top
-and not already closing, or while an inline rename field or new entry is open. The
-dispatcher yields on the same `BrowserView::inline_edit_is_open` predicate. The file
-chooser retains its separate, restricted keyboard policy when 10xer mode is off.
+browser commands. Search, jump to folder, open terminal, refresh, and arrow scope
+(`WINDOW_ACTIONS`) are dispatcher bindings, not GTK accelerators: when dispatch yields,
+`Dispatcher::after_yield` activates the matching enabled `win.*` action and consumes the
+key even when the action's guard then declines. Dispatch also yields while a modal or an
+inline edit owns input, so `composition::add_guarded_window_action` installs those actions
+with a gate: they do nothing while a modal layer other than the action's own (the search
+palette) is on top and not already closing, or while an inline rename field or new entry
+is open. The dispatcher yields on the same `BrowserView::inline_edit_is_open` predicate.
+A key still unclaimed reaches `edit_focused_text`, which runs a focused text field's own
+copy, cut, paste, select-all, undo, or redo action for a key that only the layout
+fallback recognizes (see [keyboard shortcuts](keyboard-shortcuts.md#text-fields)). The
+file chooser retains its separate, restricted keyboard policy when 10xer mode is off; it
+has no window actions but applies `edit_focused_text` too.
 
 When [10xer mode](10xer-mode.md) is on, that dispatcher runs its 10xer stages
 (`tenxer_keys` and the `keyboard/` modules) ahead of the default pipeline. The
@@ -417,9 +423,9 @@ search, clipboard, and undo never see chooser keys, and `keyboard/chooser.rs`
 refuses commands the request does not allow: **Enter** / **o** confirm a file,
 **Esc** cancels after dismissing prompts or preview, and Open With, custom
 actions, and clipboard verbs stay unavailable. Window-local browse / visual / chord / prompt state
-lives in `ui/tenxer_mode.rs`, not on `Browser`. Per-window preference bindings
-update the shared `gtk::Application` accelerators idempotently; window destruction
-does not restore them while other windows still use 10xer mode.
+lives in `ui/tenxer_mode.rs`, not on `Browser`. `after_yield` reads the
+preference when a key arrives, so the jump to folder, open terminal, and arrow
+scope window actions stay unbound in every window without application-wide state.
 Chrome-visibility bindings hide pane Close/filter/refresh/sort in both
 interactive browsers and the chooser. Tab and arrow focus stay inside the
 Columns, List, and Icons panes; sidebar, header, and footer controls stay
