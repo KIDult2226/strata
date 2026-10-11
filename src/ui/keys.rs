@@ -124,17 +124,14 @@ impl KeyPress {
         bindings.iter().any(|binding| self.is(*binding))
     }
 
-    /// The digit-row position (1–9, 0) or keypad digit, when the held
-    /// modifiers, Shift included, are exactly `modifiers`.
-    pub(crate) fn digit(&self, modifiers: Modifiers) -> Option<u8> {
-        self.digit.filter(|_| self.state == modifiers)
-    }
-
-    /// The digit when the press is in `digits`, which a chord's second key or
-    /// a modified digit row can be.
+    /// The digit-row position (1–9, 0) or keypad digit when the press is in
+    /// `digits`. Held modifiers, Shift included, must match apart from those
+    /// the range ignores.
     pub(crate) fn digit_in(&self, digits: Digits) -> Option<u8> {
-        self.digit(digits.modifiers())
-            .filter(|digit| digits.contains(*digit))
+        let compared = SHORTCUT_MODIFIERS.difference(digits.ignored());
+        self.digit.filter(|digit| {
+            self.state & compared == digits.modifiers() & compared && digits.contains(*digit)
+        })
     }
 
     /// The typed character, for typing consumers only. Nothing is typed while
@@ -384,7 +381,7 @@ where
         shortcut_modifiers: modifiers,
         state,
         typed: event.typed,
-        digit: position_digit(event.keycode, event.typed),
+        digit: position_digit(event.keycode, event.typed, event.level),
         fallback: latin.is_some(),
         modifier: event.modifier,
     }
@@ -460,14 +457,17 @@ fn digit_value(key: Key) -> Option<u8> {
         .map(|digit| digit as u8)
 }
 
-/// GDK keycodes are evdev codes plus 8 on X11 and Wayland; 10–19 are the digit row.
-fn position_digit(keycode: u32, typed: Key) -> Option<u8> {
+/// GDK keycodes are evdev codes plus 8 on X11 and Wayland; 10–19 are the digit
+/// row. Elsewhere a key counts as the digit it types, such as the Hungarian 0
+/// left of 1, but not an AltGr digit.
+fn position_digit(keycode: u32, typed: Key, level: u32) -> Option<u8> {
     match keycode {
         10..=19 => Some(((keycode - 9) % 10) as u8),
         _ => KEYPAD_DIGITS
             .iter()
             .position(|digit| *digit == typed)
-            .map(|digit| digit as u8),
+            .map(|digit| digit as u8)
+            .or_else(|| digit_value(typed).filter(|_| level <= 1)),
     }
 }
 

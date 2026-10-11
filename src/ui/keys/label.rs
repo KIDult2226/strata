@@ -25,6 +25,7 @@ pub(crate) enum Keys {
 pub(crate) struct Digits {
     prefix: Option<Binding>,
     modifiers: Modifiers,
+    ignored: Modifiers,
     last: u8,
     zero: bool,
 }
@@ -34,15 +35,19 @@ impl Digits {
         Self {
             prefix: None,
             modifiers,
+            ignored: Modifiers::empty(),
             last,
             zero,
         }
     }
 
+    /// A chord's digit step. It also accepts Shift, which AZERTY needs to type
+    /// digits and which no chord step uses.
     pub(crate) const fn after(prefix: Binding, last: u8, zero: bool) -> Self {
         Self {
             prefix: Some(prefix),
             modifiers: Modifiers::empty(),
+            ignored: Modifiers::SHIFT_MASK,
             last,
             zero,
         }
@@ -51,6 +56,10 @@ impl Digits {
     /// The modifiers held with the digit; none after a chord prefix.
     pub(crate) const fn modifiers(self) -> Modifiers {
         self.modifiers
+    }
+
+    pub(crate) const fn ignored(self) -> Modifiers {
+        self.ignored
     }
 
     /// The digits alone, as a panel or badge lists them while the prefix or

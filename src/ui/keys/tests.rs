@@ -2,7 +2,7 @@
 
 use gtk::gdk::{Key, ModifierType as Modifiers};
 
-use super::{Binding, Event, KeyPress, normalize};
+use super::{Binding, Digits, Event, KeyPress, normalize};
 
 const NONE: Modifiers = Modifiers::empty();
 const SHIFT: Modifiers = Modifiers::SHIFT_MASK;
@@ -25,6 +25,7 @@ const US: Layout = &[
 ];
 const RU: Layout = &[
     (11, [Key::_2, Key::quotedbl]),
+    (29, [Key::Cyrillic_en, Key::Cyrillic_EN]),
     (38, [Key::Cyrillic_ef, Key::Cyrillic_EF]),
     (44, [Key::Cyrillic_o, Key::Cyrillic_O]),
     (45, [Key::Cyrillic_el, Key::Cyrillic_EL]),
@@ -57,6 +58,10 @@ const DE: Layout = &[
     (52, [Key::y, Key::Y]),
 ];
 const DVORAK: Layout = &[(54, [Key::j, Key::J])];
+const HU: Layout = &[
+    (19, [Key::odiaeresis, Key::Odiaeresis]),
+    (49, [Key::_0, Key::section]),
+];
 
 /// One physical press as GDK reports it.
 struct Press {
@@ -278,6 +283,19 @@ fn letters_follow_the_label_then_the_physical_key() {
     for (name, press, binding) in cases {
         assert!(press.is(binding), "{name}: {press:?}");
     }
+    let de_ru = press(
+        &[DE, RU],
+        1,
+        29,
+        0,
+        Key::Cyrillic_en,
+        (Key::Cyrillic_en, CTRL),
+        CTRL,
+    );
+    assert!(
+        de_ru.is(Binding::ctrl(Key::z)) && !de_ru.is(Binding::ctrl(Key::y)),
+        "a configured Latin layout wins over the US table: {de_ru:?}"
+    );
 }
 
 #[test]
@@ -426,22 +444,53 @@ fn digit_row_keys_are_digits_by_position() {
         (Key::exclam, CTRL),
         CTRL_SHIFT,
     );
-    assert_eq!(azerty_ctrl_1.digit(CTRL), Some(1));
     assert!(azerty_ctrl_1.is(Binding::ctrl(Key::_1)));
-    assert_eq!(azerty_ctrl_1.digit(CTRL_SHIFT), None);
-    assert_eq!(azerty_ctrl_shift_1.digit(CTRL_SHIFT), Some(1));
+    assert!(!azerty_ctrl_1.is(Binding::ctrl_shift(Key::_1)));
+    assert!(azerty_ctrl_shift_1.is(Binding::ctrl_shift(Key::_1)));
     assert!(!azerty_ctrl_shift_1.is(Binding::ctrl(Key::_1)));
-    assert_eq!(qwertz_ctrl_shift_2.digit(CTRL_SHIFT), Some(2));
-    assert_eq!(us_ctrl_shift_1.digit(CTRL_SHIFT), Some(1));
-    assert_eq!(us_ctrl_shift_1.digit(CTRL), None);
+    assert!(qwertz_ctrl_shift_2.is(Binding::ctrl_shift(Key::_2)));
+    assert!(us_ctrl_shift_1.is(Binding::ctrl_shift(Key::_1)));
+    assert!(!us_ctrl_shift_1.is(Binding::ctrl(Key::_1)));
+
+    let tab_numbers = Digits::new(CTRL_SHIFT, 9, true);
+    assert_eq!(azerty_ctrl_shift_1.digit_in(tab_numbers), Some(1));
+    assert_eq!(azerty_ctrl_1.digit_in(tab_numbers), None);
+    // A chord's digit step accepts the Shift AZERTY types digits with.
+    let chord_step = Digits::after(Binding::plain(Key::g), 9, false);
+    let azerty_shift_6 = press(&[FR], 0, 15, 1, Key::_6, (Key::_6, NONE), SHIFT);
+    assert_eq!(azerty_shift_6.digit_in(chord_step), Some(6));
+
+    // Hungarian prints 0 left of 1 and Ö on the tenth key; both read as 0.
+    let hu_zero = press(&[HU], 0, 49, 0, Key::_0, (Key::_0, CTRL), CTRL);
+    let hu_tenth = press(
+        &[HU],
+        0,
+        19,
+        0,
+        Key::odiaeresis,
+        (Key::odiaeresis, CTRL),
+        CTRL,
+    );
+    assert!(hu_zero.is(Binding::ctrl(Key::_0)), "{hu_zero:?}");
+    assert!(hu_tenth.is(Binding::ctrl(Key::_0)), "{hu_tenth:?}");
+    let hu_section = press(
+        &[HU],
+        0,
+        49,
+        1,
+        Key::section,
+        (Key::section, CTRL),
+        CTRL_SHIFT,
+    );
+    assert!(!hu_section.is(Binding::ctrl_shift(Key::_0)));
 }
 
 #[test]
 fn keypad_digits_count_only_with_num_lock() {
     let digit = press(&[US], 0, 87, 0, Key::KP_1, (Key::KP_1, CTRL), CTRL);
     let end = press(&[US], 0, 87, 0, Key::KP_End, (Key::KP_End, CTRL), CTRL);
-    assert_eq!(digit.digit(CTRL), Some(1));
-    assert_eq!(end.digit(CTRL), None);
+    assert!(digit.is(Binding::ctrl(Key::_1)));
+    assert!(!end.is(Binding::ctrl(Key::_1)));
 }
 
 #[test]
@@ -549,7 +598,7 @@ fn ignored_modifiers_are_the_only_ones_a_binding_tolerates() {
 #[test]
 fn signals_without_an_event_read_as_us_presses() {
     let exclam = KeyPress::from_signal(Key::exclam, 0, CTRL_SHIFT);
-    assert_eq!(exclam.digit(CTRL_SHIFT), Some(1));
+    assert!(exclam.is(Binding::ctrl_shift(Key::_1)));
     assert!(exclam.is(Binding::ctrl(Key::exclam)));
     for letter in [Key::K, Key::k] {
         assert!(KeyPress::from_signal(letter, 0, CTRL_SHIFT).is(Binding::ctrl_shift(Key::k)));
