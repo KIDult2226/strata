@@ -102,9 +102,9 @@ impl Shortcut {
     }
 
     /// Whether the lowercase `query` occurs in the keys or the action, in the
-    /// interface language or in English.
+    /// interface language or in English. A typed `-` finds the `−` labels show.
     pub(crate) fn matches(&self, query: &str) -> bool {
-        let found = |text: String| text.to_lowercase().contains(query);
+        let found = |text: String| text.to_lowercase().replace('\u{2212}', "-").contains(query);
         query.is_empty()
             || found(keys::search_text(&self.keys))
             || found(self.key_text())

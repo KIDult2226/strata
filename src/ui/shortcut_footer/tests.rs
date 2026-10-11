@@ -337,6 +337,15 @@ fn localized_reference_names_keys_in_the_interface_language() {
                     "{query} finds an alternative that shares its modifiers: {matches:?}"
                 );
             }
+            for (query, keys) in [("ctrl+-", "Strg++ / − / 0"), ("g -", "g + / g −")] {
+                footer.search.set_text(query);
+                settle();
+                let matches = reference_labels(&footer);
+                assert!(
+                    matches.iter().any(|label| label == keys),
+                    "a typed - finds {keys}: {matches:?}"
+                );
+            }
         },
     );
 }
