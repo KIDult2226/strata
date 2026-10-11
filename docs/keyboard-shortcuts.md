@@ -33,9 +33,12 @@ Shortcuts follow the key's label first, then its physical position:
   With AltGr, a top-row key counts only when it types a digit, as on
   Lithuanian; AltGr symbols there, such as the AZERTY `~` and `@` or the `\` of
   German Mac layouts, stay symbols.
-- **`+` and `−` win over a digit position.** Where a top-row key types `+` or
-  `−`, it acts as that symbol: on Swiss German, Ctrl and the `+` key (Shift+1)
-  is **Ctrl++**, not tab 1, and on AZERTY **g** then the `−` key unpins.
+- **`+` and `−` win over a digit position where they have a meaning.** Where
+  a top-row key types `+` or `−`, Ctrl shortcuts and **g** read it as that
+  symbol: on Swiss German, Ctrl and the `+` key (Shift+1) is **Ctrl++**, not
+  tab 1, and on AZERTY **g** then the `−` key unpins. **t** and **;** have no
+  `+` or `−` step, so they count the key's position: on AZERTY **t** then the
+  `−` key selects tab 6, and on Czech **t** then the `+` key selects tab 1.
 - **Keypad keys act as the main keys** they share a label with: keypad Enter,
   arrows, Home, End, Page Up, Page Down, Insert, Delete, Tab, Space, `+`, `−`,
   `*`, `/` and `=`.
@@ -156,7 +159,8 @@ unless a key is a letter (**Ctrl+U / Ctrl+D**). Minus is shown as **−**.
 
 F1 searches `keys::search_text`: the label in the interface language and in
 English, with each alternative also spelled out in full, so **strg+0** and
-**ctrl+0** both find **Strg++ / − / 0**. A typed `-` finds the **−** in labels.
+**ctrl+0** both find **Strg++ / − / 0**. A typed `-` finds the **−** in labels
+and the **–** of digit ranges, so **1-9** finds **Ctrl+Shift+1–9 / 0**.
 
 Menus display the formatter's text too. GTK formats a menu item's `accel`
 attribute itself: it puts Shift first, capitalizes letters, and uses its own

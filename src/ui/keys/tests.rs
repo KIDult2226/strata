@@ -46,6 +46,7 @@ const HE: Layout = &[(24, [Key::slash, Key::Q]), (54, [Key::hebrew_bet, Key::C])
 const FR: Layout = &[
     (10, [Key::ampersand, Key::_1]),
     (11, [Key::eacute, Key::_2]),
+    (15, [Key::minus, Key::_6]),
     (19, [Key::agrave, Key::_0]),
     (24, [Key::a, Key::A]),
     (38, [Key::q, Key::Q]),
@@ -59,6 +60,7 @@ const DE: Layout = &[
 ];
 const DVORAK: Layout = &[(54, [Key::j, Key::J])];
 const LT: Layout = &[(10, [Key::aogonek, Key::Aogonek])];
+const CZ: Layout = &[(10, [Key::plus, Key::_1])];
 const HU: Layout = &[
     (19, [Key::odiaeresis, Key::Odiaeresis]),
     (49, [Key::_0, Key::section]),
@@ -458,6 +460,14 @@ fn digit_row_keys_are_digits_by_position() {
     let chord_step = Digits::after(Binding::plain(Key::g), 9, false);
     let azerty_shift_6 = press(&[FR], 0, 15, 1, Key::_6, (Key::_6, NONE), SHIFT);
     assert_eq!(azerty_shift_6.digit_in(chord_step), Some(6));
+    // A top-row + or − is both: g and Ctrl read the symbol first, while t and ;
+    // have no symbol step and take the digit.
+    let azerty_minus = press(&[FR], 0, 15, 0, Key::minus, (Key::minus, NONE), NONE);
+    let cz_plus = press(&[CZ], 0, 10, 0, Key::plus, (Key::plus, NONE), NONE);
+    assert!(azerty_minus.is(Binding::plain(Key::minus)));
+    assert_eq!(azerty_minus.digit_in(chord_step), Some(6));
+    assert!(cz_plus.is(Binding::plain(Key::plus)));
+    assert_eq!(cz_plus.digit_in(chord_step), Some(1));
 
     // Hungarian prints 0 left of 1 and Ö on the tenth key; both read as 0.
     let hu_zero = press(&[HU], 0, 49, 0, Key::_0, (Key::_0, CTRL), CTRL);

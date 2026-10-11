@@ -124,6 +124,15 @@ fn go_chord_resolves_uris_and_visible_pin_order() {
         go_target(&chord_key(Key::space), &pins),
         Some(GoTarget::Prompt)
     );
+    // The AZERTY − key is also digit 6 and the Czech + key digit 1.
+    for (key, keycode, pin) in [(Key::minus, 15, false), (Key::plus, 10, true)] {
+        let press = crate::ui::keys::KeyPress::from_signal(key, keycode, ModifierType::empty());
+        assert_eq!(
+            go_target(&press, &pins),
+            Some(GoTarget::Pin(pin)),
+            "{key:?}"
+        );
+    }
     for key in [Key::z, Key::G, Key::q, Key::_0] {
         assert_eq!(
             go_target(&chord_key(key), &pins),
