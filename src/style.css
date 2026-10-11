@@ -1244,13 +1244,18 @@ colorchooser button.circular:disabled {
   padding: 10px 12px;
 }
 
-.send-to-success {
+.overlay-notice {
   background: @strata_surface;
   border: 1px solid alpha(@strata_border, 0.6);
-  border-radius: 8px;
-  box-shadow: 0 2px 10px alpha(@strata_bg, 0.4);
-  margin: 12px;
-  padding: 10px 12px;
+  border-radius: 12px;
+  box-shadow: 0 0 10px alpha(@strata_glow, 0.18);
+  color: @strata_text;
+  min-width: 280px;
+  padding: 12px 16px;
+}
+
+.overlay-notice-heading {
+  font-weight: bold;
 }
 
 .form-message.warning {
@@ -4251,6 +4256,17 @@ textview > popover.menu > contents > scrolledwindow > viewport > stack {
 
 .actions-context-popover label.separator {
   padding: 4px 8px;
+}
+
+/* Mirror the item margin and padding so the icon lines up with item text. */
+.actions-context-popover .provider-heading {
+  margin-left: 8px;
+  padding-left: 8px;
+}
+
+.actions-context-popover .provider-heading > label.separator {
+  margin-left: 0;
+  padding-left: 6px;
 }
 
 .actions-context-popover separator,

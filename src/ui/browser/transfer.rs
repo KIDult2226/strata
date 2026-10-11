@@ -492,40 +492,14 @@ impl ViewState {
     }
 
     /// Shows transient success feedback for a fast Send-to whose transfer
-    /// finished before the normal progress UI became visible. Replaces any
-    /// still-visible notice and restarts its dismissal timer.
-    pub(super) fn show_send_to_success(self: &Rc<Self>, device_name: &str, item_count: usize) {
-        if let Some(widget) = self.send_to_success_widget.take() {
-            self.overlay.remove_overlay(&widget);
-        }
-        let generation = self.send_to_success_generation.get().saturating_add(1);
-        self.send_to_success_generation.set(generation);
-        let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-        row.add_css_class("send-to-success");
-        row.set_halign(gtk::Align::Center);
-        row.set_valign(gtk::Align::Start);
-        row.set_can_target(false);
-        let icon = crate::assets::primary_icon(crate::assets::icons::CHECK, 16);
-        icon.set_can_target(false);
-        row.append(&icon);
-        let label = gtk::Label::new(Some(&Self::send_to_success_text(device_name, item_count)));
-        label.set_can_target(false);
-        row.append(&label);
-        self.overlay.add_overlay(&row);
-        self.send_to_success_widget
-            .replace(Some(row.clone().upcast()));
-        let weak_state = Rc::downgrade(self);
-        let weak_row = row.downgrade();
-        glib::timeout_add_local_once(SEND_TO_SUCCESS_DURATION, move || {
-            let (Some(state), Some(row)) = (weak_state.upgrade(), weak_row.upgrade()) else {
-                return;
-            };
-            if state.send_to_success_generation.get() != generation {
-                return;
-            }
-            state.send_to_success_widget.take();
-            state.overlay.remove_overlay(&row);
-        });
+    /// finished before the normal progress UI became visible.
+    pub(super) fn show_send_to_success(&self, device_name: &str, item_count: usize) {
+        crate::ui::notice::show_notice(
+            &self.overlay,
+            None,
+            &Self::send_to_success_text(device_name, item_count),
+            SEND_TO_SUCCESS_DURATION,
+        );
     }
 
     fn start_drop_transfer(

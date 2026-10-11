@@ -28,7 +28,7 @@ pub(super) struct CompactProgress {
     completion: Rc<completion::Completion>,
 }
 
-fn dock(overlay: &gtk::Overlay) -> (gtk::ScrolledWindow, gtk::Box) {
+pub(super) fn dock(overlay: &gtk::Overlay) -> (gtk::ScrolledWindow, gtk::Box) {
     let mut child = overlay.first_child();
     while let Some(widget) = child {
         child = widget.next_sibling();

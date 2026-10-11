@@ -43,6 +43,7 @@ fn install_hub() {
             version: 1,
             id: "example".into(),
             name: Some("Example Cloud".into()),
+            icon: None,
             command: vec![
                 "/usr/bin/python3".into(),
                 "-u".into(),
@@ -61,6 +62,7 @@ fn install_hub() {
                 icons: Default::default(),
                 id: "example".into(),
                 name: "Example Cloud".into(),
+                heading_icon: None,
                 cache: Default::default(),
                 menus: Default::default(),
                 freshness: Freshness::default(),
@@ -123,6 +125,7 @@ for line in sys.stdin:
                 version: 1,
                 id: "example".into(),
                 name: None,
+                icon: None,
                 command: vec![
                     "/usr/bin/python3".into(),
                     "-u".into(),
@@ -235,11 +238,13 @@ fn provider_sections_scope_duplicate_labels_and_retire_empty_groups() {
                         Provider {
                             id: id.into(),
                             name: name.clone().unwrap_or_else(|| id.into()),
+                            heading_icon: None,
                             client: protocol::start(Registration {
                                 manifest: protocol::Manifest {
                                     version: 1,
                                     id: id.into(),
                                     name,
+                                    icon: None,
                                     command: vec![
                                         "/usr/bin/python3".into(),
                                         "-u".into(),
@@ -266,6 +271,7 @@ fn provider_sections_scope_duplicate_labels_and_retire_empty_groups() {
             let mut renderer = menus::Renderer::new(
                 model.clone(),
                 group.clone(),
+                glib::WeakRef::new(),
                 glib::WeakRef::new(),
                 (vec!["/file".into()], false),
                 Rc::new(Cell::new(1)),
@@ -345,6 +351,7 @@ fn nested_refresh_retains_navigation_model_and_withdraws_old_leaf_actions() {
                 model.clone(),
                 group.clone(),
                 glib::WeakRef::new(),
+                glib::WeakRef::new(),
                 (vec!["/file".into()], false),
                 Rc::new(Cell::new(1)),
                 1,
@@ -392,6 +399,7 @@ fn retired_menu_does_not_remove_replacement_menu_actions() {
                 menus::Renderer::new(
                     model.clone(),
                     group.clone(),
+                    glib::WeakRef::new(),
                     glib::WeakRef::new(),
                     (vec!["/file".into()], false),
                     alive.clone(),
@@ -535,6 +543,7 @@ fn continuously_dirty_rows_do_not_starve_other_windows_or_later_batches() {
                         version: 1,
                         id: "example".into(),
                         name: None,
+                        icon: None,
                         command: vec![
                             "/usr/bin/python3".into(),
                             "-u".into(),
@@ -590,6 +599,160 @@ fn continuously_dirty_rows_do_not_starve_other_windows_or_later_batches() {
                 window.destroy();
             }
             HUB.with(|cell| cell.replace(None));
+        },
+    );
+}
+
+fn start_scripted_provider(hub: &mut Hub, script: &str) {
+    hub.providers[0].client = protocol::start(Registration {
+        manifest: protocol::Manifest {
+            version: 1,
+            id: "example".into(),
+            name: Some("Example Cloud".into()),
+            icon: None,
+            command: vec![
+                "/usr/bin/python3".into(),
+                "-u".into(),
+                "-c".into(),
+                script.into(),
+            ],
+            icons: Default::default(),
+        },
+        icons: Default::default(),
+    });
+}
+
+fn overlay_layers(overlay: &gtk::Overlay) -> Vec<gtk::Widget> {
+    let mut layers = Vec::new();
+    let mut child = overlay.first_child();
+    while let Some(widget) = child {
+        child = widget.next_sibling();
+        if overlay.child().as_ref() != Some(&widget) {
+            layers.push(widget);
+        }
+    }
+    layers
+}
+
+#[test]
+fn activation_feedback_routes_success_to_notice_and_problems_to_dialog() {
+    crate::test_support::gtk_test(
+        "ui::file_providers::tests::activation_feedback_routes_success_to_notice_and_problems_to_dialog",
+        || {
+            install_hub();
+            let script = r#"import json,sys
+replies={
+ 'notice':{'outcome':{'status':'accepted','accepted':1,'total':1},'feedback':'notice'},
+ 'quiet':{'outcome':{'status':'accepted','accepted':1,'total':1},'feedback':'none'},
+ 'legacy':{},
+ 'rejected':{'outcome':{'status':'rejected','accepted':0,'total':1},'feedback':'notice'},
+}
+for line in sys.stdin:
+ r=json.loads(line)
+ print(json.dumps({'version':1,'id':r['id'],'message':'Link copied',**replies[r['action']]}),flush=True)
+"#;
+            with_hub(|hub| start_scripted_provider(hub, script));
+            for (action, notice, dialog) in [
+                ("notice", true, false),
+                ("quiet", false, false),
+                ("legacy", false, true),
+                ("rejected", false, true),
+            ] {
+                let overlay = gtk::Overlay::new();
+                overlay.set_child(Some(&gtk::Label::new(None)));
+                let owner: gtk::Widget = overlay.clone().upcast();
+                with_hub(|hub| {
+                    let mut activation = request("activate", vec!["/file".into()], false);
+                    activation.action = Some(action.into());
+                    hub.send(0, activation, Pending::Activate(0, owner.downgrade()));
+                });
+                let deadline = Instant::now() + Duration::from_secs(5);
+                while with_hub(|hub| !hub.pending.is_empty()) {
+                    assert!(Instant::now() < deadline, "{action} reply was not handled");
+                    with_hub(Hub::tick);
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+                let (docks, dialogs): (Vec<_>, Vec<_>) = overlay_layers(&overlay)
+                    .into_iter()
+                    .partition(|layer| layer.has_css_class("file-operation-dock"));
+                let notices = docks
+                    .iter()
+                    .filter_map(|dock| dock.first_child()?.first_child()?.first_child())
+                    .filter(|row| row.has_css_class("overlay-notice"))
+                    .count();
+                assert_eq!(notices, usize::from(notice), "{action} notice");
+                assert_eq!(dialogs.len(), usize::from(dialog), "{action} dialog");
+            }
+        },
+    );
+}
+
+#[test]
+fn provider_icon_heading_keeps_the_name_and_action_positions() {
+    crate::test_support::gtk_test(
+        "ui::file_providers::tests::provider_icon_heading_keeps_the_name_and_action_positions",
+        || {
+            install_hub();
+            let texture = gdk::MemoryTexture::new(
+                1,
+                1,
+                gdk::MemoryFormat::R8g8b8a8,
+                &glib::Bytes::from_static(&[0, 0, 0, 255]),
+                4,
+            );
+            with_hub(|hub| hub.providers[0].heading_icon = Some(texture.upcast()));
+            let model = gio::Menu::new();
+            let popover = gtk::PopoverMenu::from_model(Some(&model));
+            let group = gio::SimpleActionGroup::new();
+            popover.insert_action_group("provider", Some(&group));
+            let mut renderer = menus::Renderer::new(
+                model.clone(),
+                group.clone(),
+                glib::WeakRef::new(),
+                popover.downgrade(),
+                (vec!["/file".into()], false),
+                Rc::new(Cell::new(1)),
+                1,
+            );
+            let labels = |section: &gio::MenuModel| {
+                (0..section.n_items())
+                    .filter_map(|index| {
+                        section
+                            .item_attribute_value(index, "label", None)
+                            .and_then(|value| value.get::<String>())
+                    })
+                    .collect::<Vec<_>>()
+            };
+            renderer.update(vec![
+                (0, action("keep", "Keep offline", None)),
+                (0, action("share", "Share", None)),
+            ]);
+            let section = model.item_link(0, "section").expect("provider section");
+            assert_eq!(labels(&section), ["Keep offline", "Share"]);
+            renderer.update(vec![
+                (0, action("share", "Share", None)),
+                (0, action("link", "Copy link", None)),
+            ]);
+            assert_eq!(labels(&section), ["Share", "Copy link"]);
+            assert!(group.lookup_action("action-0-keep").is_none());
+
+            let mut heading = None;
+            let mut stack = vec![popover.clone().upcast::<gtk::Widget>()];
+            while let Some(widget) = stack.pop() {
+                if widget.has_css_class("provider-heading") {
+                    heading = Some(widget.clone());
+                }
+                let mut child = widget.first_child();
+                while let Some(next) = child {
+                    child = next.next_sibling();
+                    stack.push(next);
+                }
+            }
+            let heading = heading.expect("provider heading row");
+            let image = heading.first_child().expect("heading icon");
+            assert!(image.downcast_ref::<gtk::Image>().is_some());
+            let label = image.next_sibling().and_downcast::<gtk::Label>();
+            assert_eq!(label.expect("heading label").label(), "Example Cloud");
         },
     );
 }

@@ -29,6 +29,7 @@ mod media;
 mod missing_tools;
 mod modal;
 mod motion;
+mod notice;
 mod open_with;
 mod pointer;
 mod portal_preferences;

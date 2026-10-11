@@ -102,6 +102,18 @@ pub(crate) enum OutcomeStatus {
     Unknown,
 }
 
+/// Presentation the provider requests for a fully accepted activation.
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum Feedback {
+    Dialog,
+    Notice,
+    None,
+    // Values from newer protocol revisions fall back to the dialog.
+    #[serde(other)]
+    Unrecognized,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 pub(crate) struct Outcome {
     pub status: OutcomeStatus,
@@ -122,24 +134,42 @@ pub(crate) struct Reply {
     #[serde(default)]
     pub message: String,
     pub outcome: Option<Outcome>,
+    pub feedback: Option<Feedback>,
     pub error: Option<String>,
 }
 
 impl Reply {
+    /// Problems and unconfirmed outcomes always use the dialog.
+    pub(crate) fn feedback(&self) -> Feedback {
+        match (self.feedback, &self.outcome) {
+            (Some(feedback @ (Feedback::Notice | Feedback::None)), Some(outcome))
+                if self.error.is_none() && outcome.status == OutcomeStatus::Accepted =>
+            {
+                feedback
+            }
+            _ => Feedback::Dialog,
+        }
+    }
+
     pub(super) fn matches(&self, request: &Request) -> bool {
         if self.error.is_some() {
-            return self.decorations.is_none() && self.actions.is_none() && self.outcome.is_none();
+            return self.decorations.is_none()
+                && self.actions.is_none()
+                && self.outcome.is_none()
+                && self.feedback.is_none();
         }
         match request.method.as_str() {
             "query" => {
                 self.decorations.is_some()
                     && self.actions.as_ref().is_none_or(Vec::is_empty)
                     && self.outcome.is_none()
+                    && self.feedback.is_none()
             }
             "menu" => {
                 self.actions.is_some()
                     && self.decorations.as_ref().is_none_or(Vec::is_empty)
                     && self.outcome.is_none()
+                    && self.feedback.is_none()
             }
             "activate" => {
                 !self.message.is_empty()
@@ -248,6 +278,7 @@ pub(super) fn checked_reply(bytes: &[u8], manifest: &Manifest) -> io::Result<Rep
                 || r.decorations.is_some()
                 || r.actions.is_some()
                 || r.outcome.is_some()
+                || r.feedback.is_some()
                 || r.error.is_some()
                 || !r.message.is_empty()))
         || (r.id.is_some() && r.paths.is_some())

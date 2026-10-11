@@ -80,11 +80,39 @@ fn registration_accepts_optional_names_and_rejects_invalid_display_text() {
 }
 
 #[test]
+fn registration_heading_icon_must_be_a_declared_icon() {
+    let root = tempfile::tempdir().expect("registration fixture");
+    let dir = registration(root.path(), vec![python()]);
+    let mut png = b"\x89PNG\r\n\x1a\n\0\0\0\x0dIHDR".to_vec();
+    png.extend(16u32.to_be_bytes());
+    png.extend(16u32.to_be_bytes());
+    fs::write(dir.join("logo.png"), png).expect("icon");
+    for (icon, accepted) in [
+        (None, true),
+        (Some(serde_json::Value::Null), true),
+        (Some(serde_json::json!("logo")), true),
+        (Some(serde_json::json!("missing")), false),
+        (Some(serde_json::json!("logo.png")), false),
+        (Some(serde_json::json!(1)), false),
+    ] {
+        let mut manifest = serde_json::json!({
+            "version":1,"id":"example","command":[python()],"icons":{"logo":"logo.png"}
+        });
+        if let Some(icon) = &icon {
+            manifest["icon"] = icon.clone();
+        }
+        fs::write(dir.join("provider.json"), manifest.to_string()).expect("write manifest");
+        assert_eq!(!discover(root.path()).is_empty(), accepted, "icon {icon:?}");
+    }
+}
+
+#[test]
 fn provider_frames_restrict_icons_size_and_action_ids() {
     let m = Manifest {
         version: 1,
         id: "example".into(),
         name: None,
+        icon: None,
         command: vec![python()],
         icons: BTreeMap::new(),
     };
@@ -231,6 +259,7 @@ fn manifest() -> Manifest {
         version: 1,
         id: "example".into(),
         name: None,
+        icon: None,
         command: vec![python()],
         icons: BTreeMap::new(),
     }
@@ -338,6 +367,81 @@ fn responses_require_method_fields_and_validate_partial_outcomes() {
             checked_reply(&serde_json::to_vec(&frame).expect("json"), &manifest()).is_ok(),
             valid
         );
+    }
+}
+
+#[test]
+fn activation_feedback_is_honored_only_for_fully_accepted_outcomes() {
+    let accepted = serde_json::json!({"status":"accepted","accepted":1,"total":1});
+    for (outcome, feedback, expected) in [
+        (Some(accepted.clone()), None, Feedback::Dialog),
+        (Some(accepted.clone()), Some("dialog"), Feedback::Dialog),
+        (Some(accepted.clone()), Some("notice"), Feedback::Notice),
+        (Some(accepted.clone()), Some("none"), Feedback::None),
+        (
+            Some(serde_json::json!({"status":"accepted"})),
+            Some("none"),
+            Feedback::None,
+        ),
+        (
+            Some(accepted.clone()),
+            Some("future-style"),
+            Feedback::Dialog,
+        ),
+        (None, Some("none"), Feedback::Dialog),
+        (
+            Some(serde_json::json!({"status":"unknown"})),
+            Some("none"),
+            Feedback::Dialog,
+        ),
+        (
+            Some(serde_json::json!({"status":"rejected","accepted":0,"total":1})),
+            Some("notice"),
+            Feedback::Dialog,
+        ),
+        (
+            Some(serde_json::json!({"status":"partial","accepted":1,"total":2})),
+            Some("none"),
+            Feedback::Dialog,
+        ),
+    ] {
+        let mut frame = serde_json::json!({"version":1,"id":1,"message":"Shared"});
+        if let Some(outcome) = &outcome {
+            frame["outcome"] = outcome.clone();
+        }
+        if let Some(feedback) = feedback {
+            frame["feedback"] = feedback.into();
+        }
+        let reply = checked_reply(&serde_json::to_vec(&frame).expect("json"), &manifest())
+            .expect("activation reply");
+        assert_eq!(reply.feedback(), expected, "{outcome:?} {feedback:?}");
+    }
+    for (frame, method) in [
+        (
+            serde_json::json!({"version":1,"id":1,"decorations":[],"feedback":"none"}),
+            "query",
+        ),
+        (
+            serde_json::json!({"version":1,"id":1,"actions":[],"feedback":"none"}),
+            "menu",
+        ),
+        (
+            serde_json::json!({"version":1,"id":1,"error":"busy","feedback":"none"}),
+            "activate",
+        ),
+    ] {
+        let reply =
+            checked_reply(&serde_json::to_vec(&frame).expect("json"), &manifest()).expect("reply");
+        assert!(
+            !reply.matches(&request(1, method)),
+            "feedback accepted on {frame}"
+        );
+    }
+    for frame in [
+        serde_json::json!({"version":1,"event":"invalidate","feedback":"none"}),
+        serde_json::json!({"version":1,"id":1,"message":"Shared","feedback":1}),
+    ] {
+        assert!(checked_reply(&serde_json::to_vec(&frame).expect("json"), &manifest()).is_err());
     }
 }
 

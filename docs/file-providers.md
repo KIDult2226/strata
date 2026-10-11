@@ -22,14 +22,16 @@ Install one directory per provider under `$XDG_CONFIG_HOME/strata/providers/`
   "id": "example",
   "name": "Example Cloud",
   "command": ["/usr/bin/python3", "/home/alice/.config/strata/providers/example/provider.py"],
-  "icons": {"available": "available.png", "working": "working.png"}
+  "icon": "logo",
+  "icons": {"logo": "logo.png", "available": "available.png", "working": "working.png"}
 }
 ```
 
 Save this as `example/provider.json`. The id must match the directory name.
 The optional `name` supplies the human-readable menu group heading; without it,
 Strata uses the id. Names must contain non-whitespace plain text, at most 64 UTF-8
-bytes, without control characters. Existing registrations need no changes.
+bytes, without control characters. The optional `icon` names one of the declared
+icons and is drawn before that heading. Existing registrations need no changes.
 Commands are literal argv with an absolute executable; no shell interpolation,
 PATH lookup, placeholder expansion or working-directory executable lookup is
 performed. The child runs with `/` as its working directory. Nothing in a browsed
@@ -144,6 +146,17 @@ The dialog shows source, status, supplied counts and job reference, and message.
 Unknown counts are explicitly shown as a lower bound. Message-only legacy replies remain
 supported, but do not imply confirmed acceptance or completion.
 
+Optional `feedback` chooses how a successful result is presented: `dialog` (the
+default), `notice` for a brief non-blocking notice showing the provider name and
+message, or `none` when the service presents its own interface, such as a share
+window. It is honored only with `outcome.status` `accepted`; rejected, partial and
+unknown outcomes, message-only replies, and disconnects always use the dialog.
+Unrecognized values also use the dialog. The message remains required either way.
+
+```json
+{"version":1,"id":3,"message":"Link copied.","outcome":{"status":"accepted"},"feedback":"notice"}
+```
+
 Long operations should be submitted as service jobs. There is no automatic retry
 of actions, including after a lost reply. An unsent action is distinguished from
 an action whose outcome is unknown; a disconnect after submission must not be
@@ -194,6 +207,7 @@ known fields must retain their types and bounds. A response has exactly one of
 and activations require `message`. Legacy adapters may additionally include empty
 `actions`/`decorations` arrays for another method. Missing required fields,
 duplicate tree ids, unknown icons and malformed outcomes are protocol errors.
+`feedback` belongs only to activation replies.
 Providers must not send nonempty fields belonging to another method.
 
 For an unsupported method or request, reply with the request id, a bounded slug

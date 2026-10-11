@@ -13,7 +13,7 @@ mod protocol;
 mod transport;
 
 pub(crate) use protocol::{
-    Decoration, MenuAction, OutcomeStatus, Reply, Request, query_batch, selection_fits,
+    Decoration, Feedback, MenuAction, OutcomeStatus, Reply, Request, query_batch, selection_fits,
 };
 pub(crate) use transport::{Client, Update, start};
 pub(crate) const PATH_LIMIT: usize = 200;
@@ -23,6 +23,8 @@ pub(crate) struct Manifest {
     pub version: u32,
     pub id: String,
     pub name: Option<String>,
+    /// Declared icon id drawn beside the menu group heading.
+    pub icon: Option<String>,
     pub command: Vec<String>,
     #[serde(default)]
     pub icons: BTreeMap<String, String>,
@@ -59,6 +61,10 @@ fn load(dir: &Path) -> Option<Registration> {
         || manifest.command.is_empty()
         || manifest.command.len() > 16
         || manifest.icons.len() > 16
+        || manifest
+            .icon
+            .as_ref()
+            .is_some_and(|icon| !manifest.icons.contains_key(icon))
         || manifest
             .command
             .iter()

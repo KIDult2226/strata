@@ -243,8 +243,6 @@ pub(super) struct ViewState {
         RefCell<HashMap<crate::services::OperationRequestId, Rc<BackgroundProgress>>>,
     pending_send_to_completion: RefCell<Option<PendingSendToCompletion>>,
     finished_send_to_completion: RefCell<Option<FinishedSendToCompletion>>,
-    send_to_success_widget: RefCell<Option<gtk::Widget>>,
-    send_to_success_generation: Cell<u64>,
 
     pin_handler: RefCell<Option<PinHandler>>,
     unpin_handler: RefCell<Option<UnpinHandler>>,
@@ -634,8 +632,6 @@ impl BrowserView {
             background_file_progress: RefCell::new(HashMap::new()),
             pending_send_to_completion: RefCell::new(None),
             finished_send_to_completion: RefCell::new(None),
-            send_to_success_widget: RefCell::new(None),
-            send_to_success_generation: Cell::new(0),
 
             pin_handler: RefCell::new(None),
             unpin_handler: RefCell::new(None),
