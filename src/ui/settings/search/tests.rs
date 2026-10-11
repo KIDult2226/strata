@@ -191,6 +191,40 @@ fn global_search_navigates_filters_lazy_pages_and_restores_without_editing_prefe
 }
 
 #[test]
+fn search_field_selects_all_with_ctrl_a_on_any_layout() {
+    use gtk::gdk::{Key, ModifierType};
+    crate::test_support::gtk_test(
+        "ui::settings::search::tests::search_field_selects_all_with_ctrl_a_on_any_layout",
+        || {
+            crate::ui::prepare_portal_ui();
+            let (_, entry, _) = settings_layer(&PreferenceManager::shared());
+            let ctrl = ModifierType::CONTROL_MASK;
+            for (key, keycode, modifiers, selects) in [
+                (Key::a, 0u32, ctrl, true),
+                // A Russian-only keymap types ф on the A key.
+                (Key::Cyrillic_ef, 38, ctrl, true),
+                (Key::A, 0, ctrl | ModifierType::SHIFT_MASK, false),
+            ] {
+                entry.set_text("folder peeking");
+                entry.select_region(0, 0);
+                let controllers = entry.observe_controllers();
+                let handled = (0..controllers.n_items())
+                    .filter_map(|index| {
+                        controllers
+                            .item(index)
+                            .and_downcast::<gtk::EventControllerKey>()
+                    })
+                    .any(|keys| {
+                        keys.emit_by_name::<bool>("key-pressed", &[&key, &keycode, &modifiers])
+                    });
+                assert_eq!(handled, selects, "{key:?}");
+                assert_eq!(entry.selection_bounds().is_some(), selects, "{key:?}");
+            }
+        },
+    );
+}
+
+#[test]
 fn late_page_filter_uses_the_current_query_and_recovers_its_sections() {
     crate::test_support::gtk_test(
         "ui::settings::search::tests::late_page_filter_uses_the_current_query_and_recovers_its_sections",

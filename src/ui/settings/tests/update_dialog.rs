@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+use gtk::gdk;
+
 use super::super::*;
 use super::{FakeInstaller, GUARD_REJECTION, offered_request, wait_until};
 use crate::test_support::gtk_test;

@@ -8,7 +8,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use gtk::{gdk, gio, glib, prelude::*, subclass::prelude::*};
+use gtk::{gio, glib, prelude::*, subclass::prelude::*};
 
 use crate::{
     assets::icons,
@@ -39,7 +39,10 @@ use super::{
     blur::BlurBin,
     browser::dismiss_modal_layer,
     controls::modal_layout,
-    keys::{self, bindings::ESCAPE_ANY},
+    keys::{
+        self,
+        bindings::{ESCAPE_ANY, SELECT_ALL},
+    },
     modal::modal_layer_with_backdrop,
     preferences::PreferenceManager,
     terminal,
@@ -3143,10 +3146,6 @@ fn settings_option(title: &str, description: &str, active: bool) -> (gtk::Box, g
     (row, toggle)
 }
 
-fn selects_all_in_settings_search(key: gdk::Key, modifiers: gdk::ModifierType) -> bool {
-    modifiers.contains(gdk::ModifierType::CONTROL_MASK) && matches!(key, gdk::Key::a | gdk::Key::A)
-}
-
 fn search_field(placeholder: &str) -> (gtk::Overlay, gtk::Entry, gtk::Button) {
     let theme_search = gtk::Entry::new();
     theme_search.add_css_class("form-control");
@@ -3156,8 +3155,8 @@ fn search_field(placeholder: &str) -> (gtk::Overlay, gtk::Entry, gtk::Button) {
     let search_keys = gtk::EventControllerKey::new();
     search_keys.set_propagation_phase(gtk::PropagationPhase::Capture);
     let selected_search = theme_search.downgrade();
-    search_keys.connect_key_pressed(move |_, key, _, modifiers| {
-        if !selects_all_in_settings_search(key, modifiers) {
+    keys::on_press(&search_keys, move |_, press| {
+        if !press.is(SELECT_ALL) {
             return glib::Propagation::Proceed;
         }
         let Some(search) = selected_search.upgrade() else {
