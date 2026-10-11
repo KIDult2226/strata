@@ -305,7 +305,7 @@ impl PreviewState {
         if self.archive_list_has_focus(Some(focused)) {
             return PreviewSurface::Archive;
         }
-        if accepts_typing(focused) {
+        if crate::ui::focus_navigation::accepts_typing(focused) {
             return PreviewSurface::Text;
         }
         let media_view = self.has_media_view()
@@ -380,21 +380,5 @@ impl PreviewState {
         };
         adjustment.set_value(target.clamp(lower, limit));
         true
-    }
-}
-
-/// Read-only source text is a document, not a text field.
-fn accepts_typing(focused: &gtk::Widget) -> bool {
-    let view = focused
-        .downcast_ref::<gtk::TextView>()
-        .cloned()
-        .or_else(|| {
-            focused
-                .ancestor(gtk::TextView::static_type())
-                .and_downcast::<gtk::TextView>()
-        });
-    match view {
-        Some(view) => view.is_editable(),
-        None => crate::ui::focus_navigation::editable(focused),
     }
 }

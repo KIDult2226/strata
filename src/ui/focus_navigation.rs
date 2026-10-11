@@ -183,6 +183,20 @@ pub(super) fn editable(widget: &gtk::Widget) -> bool {
         || widget.ancestor(gtk::TextView::static_type()).is_some()
 }
 
+/// Whether typed text goes into `widget`. Read-only text views are documents,
+/// not text fields.
+pub(super) fn accepts_typing(widget: &gtk::Widget) -> bool {
+    let view = widget.downcast_ref::<gtk::TextView>().cloned().or_else(|| {
+        widget
+            .ancestor(gtk::TextView::static_type())
+            .and_downcast::<gtk::TextView>()
+    });
+    match view {
+        Some(view) => view.is_editable(),
+        None => editable(widget),
+    }
+}
+
 pub(super) fn in_popover(widget: &gtk::Widget) -> bool {
     widget.is::<gtk::Popover>() || widget.ancestor(gtk::Popover::static_type()).is_some()
 }

@@ -1415,6 +1415,14 @@ fn tenxer_entries_menus_and_reference_keep_their_keys() {
             let preferences = PreferenceManager::shared();
             preferences.set_tenxer_mode(true);
             let names = directory_names(fixture._directory.path());
+            // Shift and the key left of 1 type Ё on a Russian layout; only the
+            // layout fallback reads it as ~.
+            let russian_tilde = || {
+                fixture.keys.emit_by_name::<bool>(
+                    "key-pressed",
+                    &[&Key::Cyrillic_IO, &49u32, &ModifierType::SHIFT_MASK],
+                )
+            };
             focus_files(&fixture);
             // F2 renames in the footer here; the context menu still renames inline.
             assert!(fixture.view.begin_rename());
@@ -1450,6 +1458,9 @@ fn tenxer_entries_menus_and_reference_keep_their_keys() {
                 assert_eq!(directory_names(fixture._directory.path()), names);
                 assert!(fixture.view.location_has_focus());
             }
+            assert!(!russian_tilde(), "Ё is typed into the location");
+            assert!(!fixture.shortcuts.reference_is_open());
+            assert!(fixture.view.location_has_focus());
             assert!(fixture.press(Key::a, ModifierType::CONTROL_MASK));
             assert_eq!(
                 location.selection_bounds(),
@@ -1474,6 +1485,8 @@ fn tenxer_entries_menus_and_reference_keep_their_keys() {
                 widget_with_class(fixture.window.upcast_ref(), "shortcut-reference-panel")
                     .is_some_and(|popover| popover.is_visible())
             });
+            assert!(!russian_tilde(), "Ё is typed into the reference search");
+            assert!(fixture.shortcuts.reference_is_open());
             fixture.press(Key::q, ModifierType::empty());
             assert!(preferences.tenxer_mode());
             assert_eq!(directory_names(fixture._directory.path()), names);
@@ -1489,6 +1502,14 @@ fn tenxer_entries_menus_and_reference_keep_their_keys() {
                 widget_with_class(fixture.window.upcast_ref(), "shortcut-reference-panel")
                     .is_none_or(|popover| !popover.is_visible())
             });
+            focus_files(&fixture);
+            assert!(russian_tilde(), "the file list reads Shift+ё as ~");
+            wait_until(|| {
+                widget_with_class(fixture.window.upcast_ref(), "shortcut-reference-panel")
+                    .is_some_and(|popover| popover.is_visible())
+            });
+            assert!(fixture.press(Key::Escape, ModifierType::empty()));
+            wait_until(|| !fixture.shortcuts.reference_is_open());
 
             focus_files(&fixture);
             assert!(fixture.press(Key::Menu, ModifierType::empty()));
