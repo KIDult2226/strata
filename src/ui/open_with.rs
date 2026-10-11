@@ -13,6 +13,10 @@ use super::{
     blur::BlurBin,
     browser::{dismiss_modal_layer, modal_layer, show_error_dialog},
     controls::modal_layout,
+    keys::{
+        self, SHORTCUT_MODIFIERS,
+        bindings::{BACKSPACE, DOWN, ESCAPE_ANY, FOCUS_NEXT, FOCUS_PREVIOUS, UP},
+    },
     recent_apps,
 };
 
@@ -464,14 +468,9 @@ fn install_list_tab_navigation(
     let always = always_use.downgrade();
     let close = close.downgrade();
     let cancel = cancel.downgrade();
-    keys.connect_key_pressed(move |_, key, _, modifiers| {
-        if !matches!(key, gtk::gdk::Key::Tab | gtk::gdk::Key::ISO_Left_Tab)
-            || modifiers.intersects(
-                gtk::gdk::ModifierType::CONTROL_MASK
-                    | gtk::gdk::ModifierType::ALT_MASK
-                    | gtk::gdk::ModifierType::SUPER_MASK,
-            )
-        {
+    keys::on_press(&keys, move |_, press| {
+        let backward = press.is(FOCUS_PREVIOUS);
+        if !backward && !press.is(FOCUS_NEXT) {
             return glib::Propagation::Proceed;
         }
         let (Some(search), Some(list), Some(always), Some(close), Some(cancel)) = (
@@ -486,8 +485,6 @@ fn install_list_tab_navigation(
         let Some(focus) = list.root().and_then(|root| root.focus()) else {
             return glib::Propagation::Proceed;
         };
-        let backward = key == gtk::gdk::Key::ISO_Left_Tab
-            || modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK);
         let focus_selected_row = || {
             if list.is_visible() {
                 list.selected_row().is_some_and(|row| row.grab_focus())
@@ -819,22 +816,16 @@ pub(super) fn show(
     search_keys.set_propagation_phase(gtk::PropagationPhase::Capture);
     let list_for_search = list.downgrade();
     let scroll_for_search = list_scroll.downgrade();
-    search_keys.connect_key_pressed(move |_, key, _, modifiers| {
-        if !matches!(key, gtk::gdk::Key::Down | gtk::gdk::Key::Up)
-            || modifiers.intersects(
-                gtk::gdk::ModifierType::CONTROL_MASK
-                    | gtk::gdk::ModifierType::ALT_MASK
-                    | gtk::gdk::ModifierType::SUPER_MASK
-                    | gtk::gdk::ModifierType::SHIFT_MASK,
-            )
-        {
+    keys::on_press(&search_keys, move |_, press| {
+        let down = press.is(DOWN);
+        if !down && !press.is(UP) {
             return glib::Propagation::Proceed;
         }
         if let (Some(list), Some(scroll)) = (list_for_search.upgrade(), scroll_for_search.upgrade())
             && let Some(selected) = list.selected_row()
         {
             let mut row = selected.clone();
-            let mut sibling = if key == gtk::gdk::Key::Down {
+            let mut sibling = if down {
                 selected.next_sibling()
             } else {
                 selected.prev_sibling()
@@ -847,7 +838,7 @@ pub(super) fn show(
                     row = candidate_row.clone();
                     break;
                 }
-                sibling = if key == gtk::gdk::Key::Down {
+                sibling = if down {
                     candidate.next_sibling()
                 } else {
                     candidate.prev_sibling()
@@ -872,12 +863,12 @@ pub(super) fn show(
     let list_keys = gtk::EventControllerKey::new();
     let search_for_list = search_entry.downgrade();
     let list_weak = list.downgrade();
-    list_keys.connect_key_pressed(move |_, key, _, modifiers| {
+    keys::on_press(&list_keys, move |_, press| {
         let (Some(list), Some(search)) = (list_weak.upgrade(), search_for_list.upgrade()) else {
             return glib::Propagation::Proceed;
         };
 
-        if key == gtk::gdk::Key::Up
+        if press.is(UP.ignoring(SHORTCUT_MODIFIERS))
             && let Some(selected) = list.selected_row()
         {
             let mut prev = selected.prev_sibling();
@@ -895,13 +886,8 @@ pub(super) fn show(
             }
         }
 
-        let has_command_modifiers = modifiers.intersects(
-            gtk::gdk::ModifierType::CONTROL_MASK
-                | gtk::gdk::ModifierType::ALT_MASK
-                | gtk::gdk::ModifierType::SUPER_MASK,
-        );
-        if !has_command_modifiers && search.is_visible() {
-            if key == gtk::gdk::Key::BackSpace {
+        if search.is_visible() {
+            if press.is(BACKSPACE.ignoring(gtk::gdk::ModifierType::SHIFT_MASK)) {
                 search.grab_focus();
                 let mut text = search.text().to_string();
                 text.pop();
@@ -909,7 +895,7 @@ pub(super) fn show(
                 search.set_position(-1);
                 return glib::Propagation::Stop;
             }
-            if let Some(ch) = key.to_unicode().filter(|c| !c.is_control()) {
+            if let Some(ch) = press.text() {
                 search.grab_focus();
                 let mut text = search.text().to_string();
                 text.push(ch);
@@ -1080,8 +1066,8 @@ pub(super) fn show(
     let escape_search = search_entry.downgrade();
     let escape = gtk::EventControllerKey::new();
     escape.set_propagation_phase(gtk::PropagationPhase::Capture);
-    escape.connect_key_pressed(move |_, key, _, _| {
-        if key == gtk::gdk::Key::Escape {
+    keys::on_press(&escape, move |_, press| {
+        if press.is(ESCAPE_ANY) {
             if let Some(search) = escape_search.upgrade()
                 && !search.text().is_empty()
             {
