@@ -125,7 +125,6 @@ const PLAYBACK: [(Binding, MediaCommand); 6] = [
     (TENXER_MEDIA_NEXT, MediaCommand::Next),
 ];
 
-/// The seek and volume keys a focused waveform takes.
 pub(super) fn seek_or_volume(press: &KeyPress) -> Option<MediaCommand> {
     command_for(&SEEK_AND_VOLUME, press)
 }

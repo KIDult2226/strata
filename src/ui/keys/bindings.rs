@@ -97,7 +97,6 @@ pub(super) struct Listed {
     pub(super) maps: Maps,
 }
 
-/// The F1 maps that list a constant.
 #[cfg(test)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Maps {

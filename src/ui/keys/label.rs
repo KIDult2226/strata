@@ -53,7 +53,6 @@ impl Digits {
         }
     }
 
-    /// The modifiers held with the digit; none after a chord prefix.
     pub(crate) const fn modifiers(self) -> Modifiers {
         self.modifiers
     }
@@ -77,7 +76,6 @@ impl Digits {
     }
 }
 
-/// The label in the interface language.
 pub(crate) fn label(keys: &Keys) -> String {
     label_in(&rust_i18n::locale(), keys)
 }

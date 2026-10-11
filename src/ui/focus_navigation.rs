@@ -17,7 +17,6 @@ mod tests;
 pub(super) const FOCUS_MODIFIERS: gdk::ModifierType =
     gdk::ModifierType::SHIFT_MASK.union(gdk::ModifierType::SUPER_MASK);
 
-/// Each arrow with the **h j k l** key that stands in for it.
 const ARROWS: [(Binding, Binding); 4] = [
     (LEFT, VIM_LEFT),
     (DOWN, VIM_DOWN),
@@ -25,7 +24,6 @@ const ARROWS: [(Binding, Binding); 4] = [
     (RIGHT, VIM_RIGHT),
 ];
 
-/// The arrow a plain arrow or **h j k l** press moves by.
 pub(super) fn spatial_arrow(press: &KeyPress) -> Option<Binding> {
     ARROWS
         .into_iter()
@@ -33,8 +31,7 @@ pub(super) fn spatial_arrow(press: &KeyPress) -> Option<Binding> {
         .map(|(arrow, _)| arrow)
 }
 
-/// `press`, with **h j k l** read as the arrows they stand for unless typing
-/// owns them.
+/// Reads **h j k l** as arrows unless typing owns them.
 pub(super) fn navigation_key(
     press: &KeyPress,
     type_to_search: bool,
@@ -87,7 +84,6 @@ pub(super) fn activate_native_arrow(scope: &impl IsA<gtk::Widget>, key: gdk::Key
     false
 }
 
-/// The direction of an arrow held with any of `tolerated`.
 pub(super) fn arrow_direction(
     press: &KeyPress,
     tolerated: gdk::ModifierType,
@@ -103,7 +99,6 @@ pub(super) fn arrow_direction(
     .map(|(_, direction)| direction)
 }
 
-/// The direction an **h j k l** press moves focus.
 pub(super) fn vim_focus_direction(press: &KeyPress) -> Option<gtk::DirectionType> {
     [
         (VIM_LEFT, gtk::DirectionType::Left),
@@ -199,8 +194,7 @@ pub(super) fn editable(widget: &gtk::Widget) -> bool {
         || widget.ancestor(gtk::TextView::static_type()).is_some()
 }
 
-/// Whether typed text goes into `widget`. Read-only text views are documents,
-/// not text fields.
+/// Unlike `editable`, a read-only text view is a document, not a field.
 pub(super) fn accepts_typing(widget: &gtk::Widget) -> bool {
     let view = widget.downcast_ref::<gtk::TextView>().cloned().or_else(|| {
         widget

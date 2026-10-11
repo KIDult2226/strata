@@ -131,7 +131,6 @@ impl KeyPress {
         }
     }
 
-    /// Whether the press is any of `bindings`.
     pub(crate) fn is_any(&self, bindings: &[Binding]) -> bool {
         bindings.iter().any(|binding| self.is(*binding))
     }
@@ -277,7 +276,6 @@ fn normalize_event(event: &gdk::KeyEvent) -> KeyPress {
     })
 }
 
-/// The parts of a key event that normalization reads.
 #[derive(Clone, Copy, Debug)]
 struct Event {
     /// `KeyEvent::match_()`: Caps Lock ignored, consumed modifiers removed,
@@ -411,7 +409,7 @@ fn types_beyond_ascii(key: Key) -> bool {
 }
 
 /// Keypad keys act as the main keys they share a label with. Num Lock digits
-/// stay keypad keys and count through `digit()`.
+/// stay keypad keys and count through `digit_in()`.
 fn main_key(key: Key) -> Key {
     match key {
         Key::KP_Enter => Key::Return,

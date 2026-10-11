@@ -504,7 +504,6 @@ pub(super) fn type_to_search_query(press: &KeyPress) -> Option<TypeToSearchQuery
     press.text().map(TypeToSearchQuery::Character)
 }
 
-/// Arrows held with any of `tolerated`, then exact **h j k l**.
 fn sidebar_focus_direction(
     press: &KeyPress,
     tolerated: ModifierType,
@@ -3597,12 +3596,10 @@ fn resolve_place_order(persisted: &[String]) -> Vec<&'static str> {
     order
 }
 
-/// The second key of the **g** chord that opens a place.
 fn place_keycap(step: super::keys::Binding) -> String {
     super::keys::label(&super::keys::Keys::One(step))
 }
 
-/// The pin number of the visible PINNED row at `ordinal`, while one exists.
 fn pin_keycap(ordinal: usize) -> Option<String> {
     use super::keys::bindings::PIN_NUMBERS;
     let pin = u8::try_from(ordinal + 1)

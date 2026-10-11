@@ -22,15 +22,12 @@ SETXKBMAP_TIMEOUT = 10.0
 
 
 class LayoutError(RuntimeError):
-    """The display's keyboard layout could not be switched or restored."""
+    pass
 
 
 @dataclass(frozen=True)
 class Layout:
-    """`setxkbmap` layouts, the index of the active one, and Caps Lock.
-
-    `name` is the test id.
-    """
+    """`name` is the test id."""
 
     name: str
     layouts: str
@@ -50,9 +47,7 @@ CAPS_LOCK = Layout("caps-lock", "us", caps_lock=True)
 
 @contextmanager
 def switched(connection: XTestConnection, layout: Layout) -> Iterator[None]:
-    """Switch the keyboard of the display `connection` drives, then restore US.
-
-    Wait for each key's effect inside the block: GDK may read the keymap only
+    """Wait for each key's effect inside the block: GDK may read the keymap only
     when it handles the event, and by then a finished block has restored US.
     """
 

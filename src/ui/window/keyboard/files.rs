@@ -58,7 +58,7 @@ fn sort_choice(press: &KeyPress) -> Option<(SortKey, SortDirection)> {
     .map(|(_, choice)| choice)
 }
 
-/// The action digit and its slot, where 0 is slot 10.
+/// 0 is slot 10.
 fn action_slot(press: &KeyPress) -> Option<(u8, usize)> {
     let digit = press.digit_in(ACTIONS_NUMBERS)?;
     let slot = if digit == 0 { 10 } else { usize::from(digit) };

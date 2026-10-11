@@ -120,7 +120,6 @@ impl Chooser {
             .unwrap_or_default()
     }
 
-    /// The keys and actions of the visible chord panel.
     fn chord_panel(&self) -> Vec<String> {
         let mut labels = Vec::new();
         let panel = widget_with_class(self.state.window.upcast_ref(), "shortcut-chord-popover");

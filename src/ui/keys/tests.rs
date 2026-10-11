@@ -64,7 +64,6 @@ const HU: Layout = &[
     (49, [Key::_0, Key::section]),
 ];
 
-/// One physical press as GDK reports it.
 struct Press {
     layouts: &'static [Layout],
     layout: u32,
@@ -129,7 +128,6 @@ fn press(
 #[test]
 fn letters_follow_the_label_then_the_physical_key() {
     let cases = [
-        // (name, press, binding it must be)
         (
             "us Ctrl+C",
             press(&[US], 0, 54, 0, Key::c, (Key::c, CTRL), CTRL),

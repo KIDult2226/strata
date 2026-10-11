@@ -508,7 +508,6 @@ fn tab_reorder_shortcuts_keep_active_context_and_stop_at_edges() {
                     Key::KP_Page_Up,
                     Key::KP_Page_Down,
                 ] {
-                    // Meta and Hyper are not shortcut modifiers.
                     for extra in [M::META_MASK, M::HYPER_MASK] {
                         let press = press(key, M::CONTROL_MASK | M::SHIFT_MASK | extra);
                         assert!(is_tab_shortcut(&press));

@@ -767,7 +767,6 @@ const EXTEND_KEYS: [Binding; 6] = [
     EXTEND_PAGE_DOWN,
 ];
 
-/// **<** and **>** step through an open audio or video preview's folder.
 fn media_track(press: &KeyPress) -> Option<MediaCommand> {
     if press.is(TENXER_MEDIA_PREVIOUS) {
         Some(MediaCommand::Previous)

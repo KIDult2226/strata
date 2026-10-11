@@ -1738,7 +1738,6 @@ fn layout_fallback_editing_keys_run_the_focused_text_fields_own_actions() {
             assert_eq!(copied.as_deref(), Some("draft"));
             assert_eq!(fixture.selected(), [0]);
 
-            // The open F1 reference passes the same editing keys to its search.
             assert!(fixture.press(Key::F1, ModifierType::empty()));
             wait_until(|| fixture.shortcuts.reference_is_open());
             let search = focused_entry(&fixture.window);

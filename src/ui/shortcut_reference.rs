@@ -101,8 +101,8 @@ impl Shortcut {
         self.action_in(&rust_i18n::locale())
     }
 
-    /// Whether the lowercase `query` occurs in the keys or the action, in the
-    /// interface language or in English. A typed `-` finds the `−` labels show.
+    /// Matches keys and actions in the interface language or English; a typed
+    /// `-` finds the `−` labels show.
     pub(crate) fn matches(&self, query: &str) -> bool {
         let found = |text: String| text.to_lowercase().replace('\u{2212}', "-").contains(query);
         query.is_empty()
@@ -148,12 +148,11 @@ const fn within(context: &'static str, keys: Keys, action: &'static str) -> Shor
     }
 }
 
-/// Translates `message`, rendering its `%{keys}` from the binding catalog.
 pub(crate) fn with_keys(message: &str, keys: Keys) -> String {
     rust_i18n::t!(message, keys = keys::label(&keys)).into_owned()
 }
 
-/// Pango markup for a legend: each shortcut in bold before its untranslated action.
+/// Pango markup for a legend: each shortcut in bold before its action.
 pub(crate) fn legend_markup(hints: &[(Keys, &str)]) -> String {
     hints
         .iter()
@@ -168,7 +167,6 @@ pub(crate) fn legend_markup(hints: &[(Keys, &str)]) -> String {
         .join("   ")
 }
 
-/// Names the sidebar toggle's shortcut in the active map.
 pub(crate) fn sidebar_toggle_tooltip(tenxer: bool) -> String {
     with_keys(
         "Toggle sidebar (%{keys})",

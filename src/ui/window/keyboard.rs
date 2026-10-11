@@ -539,7 +539,7 @@ struct Dispatcher {
 }
 
 struct KeyEvent {
-    /// The press, with **h j k l** read as arrows where they navigate.
+    /// **h j k l** already read as arrows where they navigate.
     press: KeyPress,
     focused: Option<gtk::Widget>,
     vim_navigation: bool,
@@ -555,7 +555,6 @@ impl KeyEvent {
         !self.press.modifiers().intersects(modifiers)
     }
 
-    /// The arrow GTK moves by when **h j k l** stood in for one.
     fn vim_arrow(&self) -> Option<gtk::gdk::Key> {
         self.vim_navigation
             .then(|| crate::ui::focus_navigation::spatial_arrow(&self.press))
@@ -791,8 +790,8 @@ impl Dispatcher {
         None
     }
 
-    /// Runs where GTK ran its own shortcuts once the dispatcher yields: window
-    /// actions, then the editing keys of a focused text field.
+    /// Where GTK's accelerators ran: window actions, then a focused text
+    /// field's editing keys.
     fn after_yield(&self, press: &KeyPress) -> Propagation {
         match self.window_action(press) {
             Propagation::Proceed => edit_focused_text(&self.window, press),

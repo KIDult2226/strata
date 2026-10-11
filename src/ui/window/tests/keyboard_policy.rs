@@ -15,7 +15,6 @@ const CONTROL: ModifierType = ModifierType::CONTROL_MASK;
 const SHIFT: ModifierType = ModifierType::SHIFT_MASK;
 const ALT: ModifierType = ModifierType::ALT_MASK;
 
-/// A US-QWERTY press as GDK delivers it without an event.
 fn press(key: Key, modifiers: ModifierType) -> KeyPress {
     KeyPress::from_signal(key, 0, modifiers)
 }
@@ -199,7 +198,6 @@ fn control_digits_select_each_browser_presentation() {
     assert_eq!(browser_mode_for_digit(&press(Key::_1, NONE)), None);
 }
 
-/// Each window action with the press that runs it.
 const WINDOW_SHORTCUTS: [(Key, ModifierType, &str); 5] = [
     (Key::k, CONTROL, "search"),
     (Key::K, CONTROL.union(SHIFT), "jump-folder"),
@@ -295,7 +293,6 @@ fn policy_window() -> (
     (window, content)
 }
 
-/// Replaces the window actions with ones that only record each run.
 fn record_window_actions(window: &gtk::ApplicationWindow) -> Rc<RefCell<Vec<&'static str>>> {
     let runs = Rc::new(RefCell::new(Vec::new()));
     for (_, _, name) in WINDOW_SHORTCUTS {

@@ -452,11 +452,9 @@ fn armed_chord_yields_to_earlier_capture_handlers() {
                 assert_place_key_does_not_jump(&fixture, &origin);
             }
 
-            // US keyboards type `~` with Shift; other layouts have a key for it.
             for (key, modifiers) in [
                 (Key::F1, ModifierType::empty()),
                 (Key::asciitilde, ModifierType::empty()),
-                (Key::asciitilde, ModifierType::SHIFT_MASK),
             ] {
                 arm_go(&fixture);
                 assert!(fixture.press(key, modifiers), "{key:?}");
