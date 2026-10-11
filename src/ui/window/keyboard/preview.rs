@@ -13,7 +13,7 @@ use super::{Dispatcher, KeyResult, command_modifiers};
 use crate::{
     app::Browser,
     ui::{
-        preview::{DocumentScroll, PreviewSurface, preview_target},
+        preview::{DocumentScroll, PreviewSurface, is_media_key, preview_target},
         tenxer_mode::Chord,
     },
 };
@@ -71,6 +71,29 @@ impl Dispatcher {
             return Some(Propagation::Stop);
         }
         let surface = self.preview.surface(&focused);
+        if surface == PreviewSurface::Document
+            && !mods.intersects(Modifiers::ALT_MASK | Modifiers::SUPER_MASK)
+            && ((mods.contains(Modifiers::SHIFT_MASK)
+                && matches!(
+                    key,
+                    Key::Left
+                        | Key::Right
+                        | Key::Up
+                        | Key::Down
+                        | Key::Home
+                        | Key::End
+                        | Key::KP_Left
+                        | Key::KP_Right
+                        | Key::KP_Up
+                        | Key::KP_Down
+                        | Key::KP_Home
+                        | Key::KP_End
+                ))
+                || (mods == Modifiers::CONTROL_MASK
+                    && matches!(key, Key::Home | Key::End | Key::KP_Home | Key::KP_End)))
+        {
+            return Some(Propagation::Proceed);
+        }
         if !mods.intersects(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK | Modifiers::SUPER_MASK) {
             if matches!(key, Key::J | Key::K) {
                 if surface != PreviewSurface::Media {
@@ -223,9 +246,8 @@ impl Dispatcher {
     }
 
     fn preview_media_key(&self, browser: &Browser, key: Key, mods: Modifiers) -> bool {
-        // `<` and `>` need Shift on most layouts.
-        let track_key = matches!(key, Key::less | Key::greater);
-        if !(mods.is_empty() || track_key && mods == Modifiers::SHIFT_MASK) {
+        let shifted = mods == Modifiers::SHIFT_MASK;
+        if !(mods.is_empty() || shifted) {
             return false;
         }
         let media_key = match key {
@@ -233,24 +255,15 @@ impl Dispatcher {
                 self.return_from_preview(browser);
                 return true;
             }
-            Key::KP_Left => Key::Left,
-            Key::KP_Right => Key::Right,
             Key::KP_Up => Key::Up,
             Key::KP_Down => Key::Down,
             other => other,
         };
-        self.preview.media_key(media_key);
-        matches!(
-            media_key,
-            Key::space
-                | Key::Left
-                | Key::Right
-                | Key::Up
-                | Key::Down
-                | Key::m
-                | Key::less
-                | Key::greater
-        )
+        if !is_media_key(media_key, shifted) {
+            return false;
+        }
+        self.preview.media_key(media_key, shifted);
+        true
     }
 
     /// **g g** in an owning document or archive preview.
@@ -296,7 +309,8 @@ impl Dispatcher {
         } else if let Some(target) = preview_target(entry) {
             self.preview.show(target, browser.active_depth());
         } else {
-            self.shortcuts.show_feedback("Nothing to preview");
+            self.shortcuts
+                .show_feedback(&crate::i18n::tr("Nothing to preview"));
         }
         true
     }
@@ -320,7 +334,8 @@ impl Dispatcher {
             return;
         }
         let Some(target) = preview_target(entry) else {
-            self.shortcuts.show_feedback("Nothing to preview");
+            self.shortcuts
+                .show_feedback(&crate::i18n::tr("Nothing to preview"));
             return;
         };
         self.preview.show(target, browser.active_depth());

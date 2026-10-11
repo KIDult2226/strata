@@ -225,6 +225,33 @@ pub(crate) struct PreparedFileDrop {
     pub state: Rc<FileDropState>,
 }
 
+struct ActiveDrag {
+    content: glib::WeakRef<gtk::gdk::ContentProvider>,
+    locations: Rc<[Location]>,
+}
+
+thread_local! {
+    static ACTIVE_DRAG: RefCell<Option<ActiveDrag>> = const { RefCell::new(None) };
+}
+
+/// Only trusted when the drop carries the provider this process created; foreign
+/// drops and stale entries fall back to the dropped value.
+fn active_drag_locations(target: &gtk::DropTarget) -> Option<Rc<[Location]>> {
+    let content = target.current_drop()?.drag()?.content();
+    ACTIVE_DRAG.with(|cell| {
+        cell.borrow()
+            .as_ref()
+            .filter(|active| active.content.upgrade().as_ref() == Some(&content))
+            .map(|active| active.locations.clone())
+    })
+}
+
+pub(crate) fn clear_active_drag() {
+    ACTIVE_DRAG.with(|cell| {
+        cell.borrow_mut().take();
+    });
+}
+
 pub(crate) const SPRING_LOAD_NAVIGATE_DELAY: Duration = Duration::from_millis(750);
 
 /// Reuses one classification for cursor feedback and the eventual transfer.
@@ -337,6 +364,10 @@ impl FileDropState {
     fn sources(&self, target: &gtk::DropTarget) -> Rc<[Location]> {
         if let Some(sources) = self.sources.borrow().clone() {
             return sources;
+        }
+        if let Some(active) = active_drag_locations(target) {
+            *self.sources.borrow_mut() = Some(active.clone());
+            return active;
         }
         let sources: Rc<[Location]> = drop_source_locations(target).into();
         if !sources.is_empty() {
@@ -525,8 +556,14 @@ fn transfer_dropped_files(
     destination: Location,
     drop_state: &Rc<FileDropState>,
 ) -> bool {
-    let Some(sources) = locations_from_file_list_value(value) else {
-        return false;
+    let sources = drop_state.sources(target);
+    let sources = if sources.is_empty() {
+        let Some(sources) = locations_from_file_list_value(value) else {
+            return false;
+        };
+        sources
+    } else {
+        sources.to_vec()
     };
     if sources.is_empty() {
         return false;
@@ -734,26 +771,33 @@ pub(in crate::ui) fn file_drag_content(entries: &[FileEntry]) -> Option<gtk::gdk
 pub(in crate::ui) fn file_drag_locations(
     locations: &[Location],
 ) -> Option<gtk::gdk::ContentProvider> {
+    if locations.is_empty() {
+        return None;
+    }
     let files = locations
         .iter()
         .map(gio_file_for_location)
         .collect::<Vec<_>>();
-    if files.is_empty() {
-        return None;
-    }
     let file_list =
         gtk::gdk::ContentProvider::for_value(&gtk::gdk::FileList::from_array(&files).to_value());
-    let uri_list = files
-        .iter()
-        .map(|file| file.uri())
-        .collect::<Vec<_>>()
-        .join("\r\n")
-        + "\r\n";
+    let mut uri_list = String::with_capacity(files.len() * 48);
+    for file in &files {
+        uri_list.push_str(&file.uri());
+        uri_list.push_str("\r\n");
+    }
     let uri_list = gtk::gdk::ContentProvider::for_bytes(
         "text/uri-list",
         &glib::Bytes::from_owned(uri_list.into_bytes()),
     );
-    Some(gtk::gdk::ContentProvider::new_union(&[file_list, uri_list]))
+    let content = gtk::gdk::ContentProvider::new_union(&[file_list, uri_list]);
+    let locations = Rc::from(locations);
+    ACTIVE_DRAG.with(|cell| {
+        *cell.borrow_mut() = Some(ActiveDrag {
+            content: content.downgrade(),
+            locations,
+        });
+    });
+    Some(content)
 }
 
 pub(super) fn copy_locations(entries: &[FileEntry]) {
@@ -1225,22 +1269,27 @@ impl ViewState {
             return;
         };
         let png_bytes = texture.save_to_png_bytes();
+        let stem = crate::i18n::tr("pasted_image.name");
         gio::spawn_blocking(move || {
-            if let Err(error) = write_pasted_image(&dir, png_bytes.as_ref()) {
+            if let Err(error) = write_pasted_image(&dir, &stem, png_bytes.as_ref()) {
                 tracing::warn!(%error, "unable to write pasted image");
             }
         });
     }
 }
 
-fn write_pasted_image(dir: &std::path::Path, bytes: &[u8]) -> std::io::Result<std::path::PathBuf> {
+fn write_pasted_image(
+    dir: &std::path::Path,
+    stem: &str,
+    bytes: &[u8],
+) -> std::io::Result<std::path::PathBuf> {
     use std::io::Write;
 
     for suffix in 0u64.. {
         let name = if suffix == 0 {
-            "image.png".to_owned()
+            format!("{stem}.png")
         } else {
-            format!("image ({suffix}).png")
+            format!("{stem} ({suffix}).png")
         };
         let path = dir.join(name);
         match std::fs::OpenOptions::new()

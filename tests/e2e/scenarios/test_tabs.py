@@ -35,12 +35,11 @@ def test_folder_click_keeps_tab_name_until_release_and_keyboard_focus_still_rena
     strata.wait_for_directory(parent)
     strata.open_directory("alpha")
     selected_tab(strata, "alpha")
-    scrollbar = strata.wait(
-        lambda: strata.window.find(role="scroll bar", states={"horizontal"}),
-        "column scrollbar",
-    )
-    value = Atspi.Accessible.get_value_iface(scrollbar.accessible)
-    assert Atspi.Value.set_current_value(value, 0.0)
+    # The strip only scrolls when its columns and the reserved preview overflow.
+    scrollbar = strata.window.find(role="scroll bar", states={"horizontal"})
+    if scrollbar is not None:
+        value = Atspi.Accessible.get_value_iface(scrollbar.accessible)
+        assert Atspi.Value.set_current_value(value, 0.0)
     target = strata.settle(strata.entry("beta", directory=parent))
     origin = strata.pointer.drag_origin(target)
     try:
@@ -162,6 +161,10 @@ def test_hovering_a_tab_during_drag_allows_a_drop_in_its_listing(strata):
     strata.fixture.path("documents/projects").mkdir()
     root = strata.fixture.root.name
     strata.keyboard.press("ctrl+t")
+    strata.wait(
+        lambda: strata.window.find(role="page tab", name=root, states={"selected"}),
+        "the new root tab to become active before pointer navigation",
+    )
     strata.open_directory("documents")
     selected_tab(strata, "documents")
     strata.keyboard.press("ctrl+shift+1")

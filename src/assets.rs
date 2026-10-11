@@ -45,6 +45,48 @@ pub mod icons {
     pub const FILE_AUDIO: &str = "strata-audio-lines";
     pub const FILE_BRACES: &str = "strata-file-braces";
     pub const FILE_CODE: &str = "strata-file-code";
+    pub const LANG_ASTRO: &str = "strata-lang-astro";
+    pub const LANG_C: &str = "strata-lang-c";
+    pub const LANG_CLOJURE: &str = "strata-lang-clojure";
+    pub const LANG_CPP: &str = "strata-lang-cpp";
+    pub const LANG_CRYSTAL: &str = "strata-lang-crystal";
+    pub const LANG_CSHARP: &str = "strata-lang-csharp";
+    pub const LANG_CSS: &str = "strata-lang-css";
+    pub const LANG_DART: &str = "strata-lang-dart";
+    pub const LANG_ELIXIR: &str = "strata-lang-elixir";
+    pub const LANG_ELM: &str = "strata-lang-elm";
+    pub const LANG_ERLANG: &str = "strata-lang-erlang";
+    pub const LANG_FSHARP: &str = "strata-lang-fsharp";
+    pub const LANG_GO: &str = "strata-lang-go";
+    pub const LANG_GRAPHQL: &str = "strata-lang-graphql";
+    pub const LANG_GROOVY: &str = "strata-lang-groovy";
+    pub const LANG_HASKELL: &str = "strata-lang-haskell";
+    pub const LANG_HTML: &str = "strata-lang-html";
+    pub const LANG_JAVA: &str = "strata-lang-java";
+    pub const LANG_JS: &str = "strata-lang-js";
+    pub const LANG_JULIA: &str = "strata-lang-julia";
+    pub const LANG_JUPYTER: &str = "strata-lang-jupyter";
+    pub const LANG_KOTLIN: &str = "strata-lang-kotlin";
+    pub const LANG_LUA: &str = "strata-lang-lua";
+    pub const LANG_NIXOS: &str = "strata-lang-nixos";
+    pub const LANG_NIM: &str = "strata-lang-nim";
+    pub const LANG_OCAML: &str = "strata-lang-ocaml";
+    pub const LANG_PERL: &str = "strata-lang-perl";
+    pub const LANG_PHP: &str = "strata-lang-php";
+    pub const LANG_PYTHON: &str = "strata-lang-python";
+    pub const LANG_QT: &str = "strata-lang-qt";
+    pub const LANG_R: &str = "strata-lang-r";
+    pub const LANG_RACKET: &str = "strata-lang-racket";
+    pub const LANG_RUBY: &str = "strata-lang-ruby";
+    pub const LANG_RUST: &str = "strata-lang-rust";
+    pub const LANG_SCALA: &str = "strata-lang-scala";
+    pub const LANG_SOLIDITY: &str = "strata-lang-solidity";
+    pub const LANG_SVELTE: &str = "strata-lang-svelte";
+    pub const LANG_SWIFT: &str = "strata-lang-swift";
+    pub const LANG_TERRAFORM: &str = "strata-lang-terraform";
+    pub const LANG_TS: &str = "strata-lang-ts";
+    pub const LANG_VUE: &str = "strata-lang-vue";
+    pub const LANG_ZIG: &str = "strata-lang-zig";
     pub const FILE_SPREADSHEET: &str = "strata-file-spreadsheet";
     pub const FILE_TERMINAL: &str = "strata-file-terminal";
     pub const FILE_PLUS: &str = "strata-file-plus";
@@ -85,6 +127,8 @@ pub mod icons {
     pub const PENCIL: &str = "strata-pencil";
     pub const PIN: &str = "strata-pin";
     pub const PLAY: &str = "strata-play";
+    pub const MAXIMIZE: &str = "strata-maximize";
+    pub const MINIMIZE: &str = "strata-minimize";
     pub const SKIP_BACK: &str = "strata-skip-back";
     pub const SKIP_FORWARD: &str = "strata-skip-forward";
     pub const MINUS: &str = "strata-minus";
@@ -467,15 +511,52 @@ fn primary_icon_texture_at(
             1,
         );
     }
+    let source =
+        if name.starts_with("strata-lang-") && source.contains(&format!("fill=\"{color}\"")) {
+            outlined_brand_icon(source, name, color, logical_px, context)
+        } else {
+            compensate_icon_strokes(source, logical_px, context)
+        };
     texture_from_svg(
         &stroke_cache_name(name, logical_px, context),
         color,
         texture_px,
-        svg_at_texture_size(
-            compensate_icon_strokes(source, logical_px, context),
-            texture_px,
-        ),
+        svg_at_texture_size(source, texture_px),
     )
+}
+
+fn outlined_brand_icon(
+    source: String,
+    name: &str,
+    color: &str,
+    logical_px: i32,
+    context: IconContext,
+) -> String {
+    // These upstream glyphs use 128-unit view boxes; all other brands use 24.
+    let units = if matches!(
+        name,
+        icons::LANG_JS | icons::LANG_TS | icons::LANG_CSHARP | icons::LANG_JAVA
+    ) {
+        128.0
+    } else {
+        24.0
+    };
+    let padding = units / 12.0;
+    let extent = units + 2.0 * padding;
+    // Compensate for the padded view box so visible strokes match Lucide's weight.
+    let stroke = extent / 12.0 * icon_stroke_factor(logical_px, context);
+    source
+        .replacen(
+            &format!("viewBox=\"0 0 {units} {units}\""),
+            &format!("viewBox=\"-{padding} -{padding} {extent} {extent}\""),
+            1,
+        )
+        .replace(
+            &format!("fill=\"{color}\""),
+            &format!(
+                "fill=\"none\" stroke=\"{color}\" stroke-width=\"{stroke}\" stroke-linecap=\"round\" stroke-linejoin=\"round\""
+            ),
+        )
 }
 
 fn stroke_cache_name(name: &str, logical_px: i32, context: IconContext) -> String {
@@ -487,14 +568,17 @@ fn stroke_cache_name(name: &str, logical_px: i32, context: IconContext) -> Strin
     format!("{name}:{context}:stroke-size:{logical_px}")
 }
 
-fn compensate_icon_strokes(source: String, logical_px: i32, context: IconContext) -> String {
+fn icon_stroke_factor(logical_px: i32, context: IconContext) -> f64 {
     let weight = match context {
-        IconContext::Interface if logical_px <= 64 => return source,
         IconContext::Interface => 1.0,
         IconContext::Grid => 0.5,
     };
     // Logical size controls perceived weight; raster resolution only controls sharpness.
-    let factor = weight * (64.0 / f64::from(logical_px.max(64))).powf(0.35);
+    weight * (64.0 / f64::from(logical_px.max(64))).powf(0.35)
+}
+
+fn compensate_icon_strokes(source: String, logical_px: i32, context: IconContext) -> String {
+    let factor = icon_stroke_factor(logical_px, context);
     source
         .replace(
             "stroke-width=\"2\"",

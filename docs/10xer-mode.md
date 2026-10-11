@@ -116,7 +116,8 @@ drawer still open, and run there on the previewed item:
 - Folders: **Backspace**, **H** / **L**, **Alt+←** / **→** / **↑**, **g** places
   and **g +** / **g -**, **z** / **Z**. In a document or archive **g g** still goes to the top; every
   other **g** chord runs from the listing.
-- Prompts: **/**, **?**, **n** / **N**, **f**, **s**.
+- Prompts: **/** (except in a searchable document, where it opens find), **?**,
+  **n** / **N**, **f**, **s**.
 - Files: **o** / **Enter** (except where the surface uses **Enter**), **y**,
   **x**, **p** / **P**, **Y** / **X**, **d** / **D** / **Delete**, **a**,
   **r** / **F2**, **c**, **,**, **.**, **;**, **O**, **M** / **C**, **R**,
@@ -133,13 +134,16 @@ every other key is typed or edits the text.
 | Key | Document | Archive tree | Password field | Media |
 | --- | --- | --- | --- | --- |
 | **j** / **k** / **↑** / **↓** | Scroll | Move the member highlight | Typed / text editing | **↑** / **↓** volume; **j** / **k** swallowed |
-| **h** / **←** | Return to the listing | Archive parent; at the archive root, return to the listing | Typed / caret | **h** returns to the listing; **←** seeks −5 s |
-| **l** / **→** | Swallowed | Open the highlighted folder; a member file does nothing | Typed / caret | **→** seeks +5 s; **l** swallowed |
+| **h** / **←** | Return to the listing | Archive parent; at the archive root, return to the listing | Typed / caret | **h** returns to the listing; **←** seeks −5 s, **Shift+←** −30 s |
+| **l** / **→** | Swallowed | Open the highlighted folder; a member file does nothing | Typed / caret | **→** seeks +5 s, **Shift+→** +30 s; **l** swallowed |
 | **Enter** | Open the file from the listing | Same as **l** | Unlock | Open the file from the listing; a video opens in the default player where the preview stopped |
 | **Space** | Swallowed | Swallowed | Typed | Play / pause |
 | **i** | Close the drawer | Close the drawer | Typed | Close the drawer |
-| **Home** / **G** / **End** | Top / bottom | First / last member | Caret (**G** typed) | Swallowed |
-| Paging keys | Scroll half / full page | Swallowed | Text editing | Swallowed |
+| **Home** / **G** / **End** | Top / bottom | First / last member | Caret (**G** typed) | Seek to the start / the last frame |
+| Paging keys | Scroll half / full page | Swallowed | Text editing | **PgUp** / **PgDn** seek +30 / −30 s; **Ctrl+U** / **D** / **B** / **F** swallowed |
+| **/** | Find in the document; see [document previews](document-previews.md#text-selection-and-find) | Listing search prompt | Typed | Listing search prompt |
+| **0** | Swallowed | Swallowed | Typed | Seek to the start |
+| **+** / **=** / **-** | Swallowed | Swallowed | Typed | Volume up / down |
 | **m** | Swallowed | Swallowed | Typed | Mute / unmute |
 | **<** / **>** | Swallowed | Swallowed | Typed | Previous / next file of the same type in the listing; playback continues |
 | **J** / **K** | Scroll | Scroll | Typed | Swallowed |
@@ -149,10 +153,12 @@ every other key is typed or edits the text.
 Returning to the listing keeps the drawer open and lands on the same cursor.
 Closing with **Esc** or **i** also returns the keys to the listing, so the
 Miller column regains its destination bar. **i** therefore toggles the preview
-from either side: open from the listing, closed from the preview. A
-focused preview button or slider (reached with **Tab** or the pointer) keeps
-GTK's own **Space** / **Enter** / arrow handling; **Shift+Tab** and **Esc** still
-return or close. Browsing archive members never extracts them, opens a listing
+from either side: open from the listing, closed from the preview. A focused
+media timeline takes the Media keys above. A focused preview button or slider
+(reached with **Tab** or the pointer) keeps GTK's own **Space** / **Enter** /
+arrow handling; **Shift+Tab** and **Esc** still return or close. The volume
+slider steps 0.1 with the arrows and 0.2 with **PgUp** / **PgDn**; **Home**
+mutes and **End** sets full volume. Browsing archive members never extracts them, opens a listing
 file, or changes the listing's cursor or fill. Unlocking a password-protected
 archive hands the keys to its member tree. **Ctrl+A** / **Ctrl+C** select all
 and copy the document's text, never listing items; with **l** the keys go to the
@@ -367,7 +373,10 @@ button does not choose it: nothing changes until you accept, and Cancel or
 **d** / **Delete** show a **Move to Trash?** confirmation with its confirm button
 focused; pressing **d** again confirms it, so **d d** trashes. **D** / **Shift+Delete**, and **d** inside Trash, show the permanent
 deletion confirmation with its confirm button focused, so **Enter** confirms, and **d**
-there does nothing. Errors appear in
+there does nothing. In a folder whose listing reports no Trash support (such as
+a tmpfs), **d** / **Delete** open a permanent confirmation instead, stating
+that the location doesn't support Trash, with Cancel focused, so **d d** does
+not delete there. Errors appear in
 the usual operation dialogs, and **Ctrl+Z** undoes what the default map can undo.
 
 **a** opens `create ›` in the footer. **Enter** creates an empty file with exactly
@@ -457,7 +466,8 @@ Typing never navigates; it lists matching folders through the
 [folder picker](#folder-picker). **Enter**, or a click, opens the chosen folder.
 When nothing is listed, such as for a URI or a path no folder matches, or when
 the typed path names an existing file or folder, **Enter** submits the text through the same navigation as the location bar
-(**Ctrl+L**): a path naming a file opens its folder with the file selected, and
+(**Ctrl+L**). `.` and `..` in a local path resolve as text, without checking the
+filesystem. A path naming a file opens its folder with the file selected, and
 URI input is submitted unchanged, except that a password typed in the URI moves
 into the mount operation instead of the location. A missing or unreachable
 destination shows the location bar's error and leaves the current folder open.
@@ -583,7 +593,7 @@ Other text with a colon, such as `10:30`, is an ordinary query.
 Text that starts as a path (`/`, `~`, `~/`, `./`, `../`, or just `..`) moves the
 search: everything through its last `/` names the folder to search below, and
 the rest is the query, so `/etc/ss` searches below `/etc` for `ss` and
-`~/dev/ str` searches `~/dev`. `.` and `..` resolve like a shell's `cd`. With
+`~/dev/ str` searches `~/dev`. `.` and `..` resolve as text. With
 nothing after the last `/`, as in `/etc/`, the list starts with that folder
 itself (unless a move or copy would refuse it), then every folder below it, the
 most visited first and then the shallowest. Without an open local folder, such

@@ -169,6 +169,261 @@ fn multi_selection_tracks_entries_and_replaces_cleanly() {
     );
 }
 
+fn selected_names(state: &NavigationState) -> Vec<String> {
+    state
+        .selected_entries()
+        .into_iter()
+        .map(|entry| entry.display_name)
+        .collect()
+}
+
+#[test]
+fn successive_fills_select_exactly_the_reported_entries() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/fixture"), RequestId(1));
+    state.apply_batch(
+        RequestId(1),
+        ["alpha", "bravo", "charlie", "delta", "echo"]
+            .map(|name| named_entry(&format!("/fixture/{name}"), name))
+            .to_vec(),
+    );
+
+    for (positions, names) in [
+        (
+            &[0, 1, 2, 3][..],
+            &["alpha", "bravo", "charlie", "delta"][..],
+        ),
+        (&[1, 2, 3, 4], &["bravo", "charlie", "delta", "echo"]),
+        (&[0, 4], &["alpha", "echo"]),
+        (&[0, 1, 4], &["alpha", "bravo", "echo"]),
+        (&[], &[]),
+    ] {
+        state.commit_selection();
+        assert!(state.set_selection(0, positions, positions.last().copied()));
+        assert_eq!(state.selected_positions(0), positions);
+        assert_eq!(selected_names(&state), names);
+        assert_eq!(state.selected_count(), positions.len());
+    }
+}
+
+#[test]
+fn a_repeated_location_is_selected_on_every_row_that_lists_it() {
+    let names = ["alpha", "bravo", "charlie"];
+    let listing = || {
+        vec![
+            named_entry("/fixture/alpha", "alpha"),
+            named_entry("/fixture/bravo", "bravo"),
+        ]
+    };
+    for arrival in ["batch", "snapshot"] {
+        let mut state = NavigationState::default();
+        state.navigate(location("/fixture"), RequestId(1));
+        state.apply_batch(RequestId(1), listing());
+        state.commit_selection();
+        assert!(state.set_selection(0, &[0, 1], Some(1)));
+        let repeat = named_entry("/fixture/alpha", "charlie");
+        match arrival {
+            "batch" => {
+                state.apply_batch(RequestId(1), vec![repeat]);
+            }
+            "snapshot" => {
+                let mut entries = listing();
+                entries.push(repeat);
+                state.install_snapshot(RequestId(1), entries);
+            }
+            _ => unreachable!(),
+        }
+
+        for (commit, reported, positions) in [
+            (true, &[0, 1][..], &[0, 1, 2][..]),
+            (false, &[0, 1], &[0, 1, 2]),
+            (true, &[1], &[1]),
+            (true, &[1, 2], &[0, 1, 2]),
+        ] {
+            if commit {
+                state.commit_selection();
+            }
+            assert!(state.set_selection(0, reported, reported.last().copied()));
+            let expected: Vec<_> = positions.iter().map(|position| names[*position]).collect();
+            assert_eq!(
+                state.selected_positions(0),
+                positions,
+                "{arrival} {reported:?}"
+            );
+            assert_eq!(selected_names(&state), expected, "{arrival} {reported:?}");
+            assert_eq!(
+                state
+                    .command_entries(0)
+                    .into_iter()
+                    .map(|entry| entry.display_name)
+                    .collect::<Vec<_>>(),
+                expected,
+                "{arrival} {reported:?}"
+            );
+        }
+
+        assert!(state.select(0, 0));
+        assert_eq!(state.selected_positions(0), [0, 2], "{arrival}");
+        state.commit_selection();
+        assert!(state.set_selection(0, &[0, 1], Some(1)));
+        assert_eq!(state.selected_positions(0), [0, 1, 2], "{arrival}");
+    }
+}
+
+#[test]
+fn a_lone_selected_cursor_follows_each_batch_onto_every_row_of_its_location() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/fixture"), RequestId(1));
+    state.apply_batch(RequestId(1), vec![named_entry("/fixture/bravo", "bravo")]);
+    assert!(state.select(0, 0));
+    assert_eq!(state.selected_positions(0), [0]);
+
+    for (arrival, positions, names) in [
+        (
+            named_entry("/fixture/alpha", "alpha"),
+            &[1][..],
+            &["bravo"][..],
+        ),
+        (
+            named_entry("/fixture/bravo", "charlie"),
+            &[1, 2],
+            &["bravo", "charlie"],
+        ),
+    ] {
+        state.apply_batch(RequestId(1), vec![arrival]);
+        assert_eq!(state.selected_positions(0), positions);
+        assert_eq!(selected_names(&state), names);
+    }
+}
+
+#[test]
+fn a_fill_is_matched_by_location_when_the_listing_repeats_one_and_drops_another() {
+    let listed = |name: &str| named_entry(&format!("/fixture/{name}"), name);
+    for (commit, reported, positions, count) in [
+        (true, &[0, 1, 3][..], &[0, 1, 2, 3][..], 3),
+        (false, &[0, 2, 3], &[0, 2, 3], 2),
+    ] {
+        let mut state = NavigationState::default();
+        state.navigate(location("/fixture"), RequestId(1));
+        state.apply_batch(
+            RequestId(1),
+            ["alpha", "bravo", "delta", "echo"].map(listed).to_vec(),
+        );
+        state.commit_selection();
+        assert!(state.set_selection(0, &[0, 2, 3], Some(3)));
+        state.install_snapshot(
+            RequestId(1),
+            vec![
+                listed("alpha"),
+                listed("bravo"),
+                named_entry("/fixture/alpha", "charlie"),
+                listed("delta"),
+            ],
+        );
+        assert_eq!(state.selected_positions(0), [0, 2, 3]);
+
+        if commit {
+            state.commit_selection();
+        }
+        assert!(state.set_selection(0, reported, Some(3)));
+        assert_eq!(state.selected_positions(0), positions, "{reported:?}");
+        assert_eq!(state.selected_count(), count, "{reported:?}");
+    }
+}
+
+#[test]
+fn a_fill_follows_every_listing_change() {
+    let watched = location("/home");
+    for change in [
+        "batch",
+        "upsert",
+        "remove",
+        "move",
+        "new entries",
+        "removals",
+        "sort",
+    ] {
+        let mut state = NavigationState::default();
+        state.navigate(watched.clone(), RequestId(1));
+        state.apply_batch(
+            RequestId(1),
+            ["alpha", "bravo", "charlie", "delta"]
+                .map(|name| named_entry(&format!("/home/{name}"), name))
+                .to_vec(),
+        );
+        assert!(state.set_selection(0, &[1, 3], Some(3)));
+        assert_eq!(state.selected_positions(0), [1, 3]);
+
+        let arrival = || named_entry("/home/aardvark", "aardvark");
+        let (positions, names): (&[usize], &[&str]) = match change {
+            "batch" => {
+                state.apply_batch(RequestId(1), vec![arrival()]);
+                (&[2, 4], &["bravo", "delta"])
+            }
+            "upsert" => {
+                state.apply_directory_change(0, &watched, DirectoryChange::Upsert(arrival()));
+                (&[2, 4], &["bravo", "delta"])
+            }
+            "remove" => {
+                state.apply_directory_change(
+                    0,
+                    &watched,
+                    DirectoryChange::Remove(location("/home/alpha")),
+                );
+                (&[0, 2], &["bravo", "delta"])
+            }
+            "move" => {
+                state.apply_directory_change(
+                    0,
+                    &watched,
+                    DirectoryChange::Move {
+                        from: location("/home/bravo"),
+                        entry: named_entry("/home/echo", "echo"),
+                    },
+                );
+                (&[2, 3], &["delta", "echo"])
+            }
+            "new entries" => {
+                state
+                    .apply_new_entries_batch(0, &watched, vec![arrival()])
+                    .expect("new entries apply");
+                (&[2, 4], &["bravo", "delta"])
+            }
+            "removals" => {
+                state.apply_removals_batch(
+                    0,
+                    &watched,
+                    [location("/home/alpha"), location("/home/charlie")],
+                );
+                (&[0, 1], &["bravo", "delta"])
+            }
+            "sort" => {
+                state.apply_sort_preferences(
+                    0,
+                    ViewPreferences {
+                        sort_direction: SortDirection::Descending,
+                        ..ViewPreferences::default()
+                    },
+                );
+                (&[0, 2], &["delta", "bravo"])
+            }
+            _ => unreachable!(),
+        };
+
+        assert_eq!(state.selected_positions(0), positions, "{change}");
+        assert_eq!(selected_names(&state), names, "{change}");
+        assert_eq!(
+            state
+                .command_entries(0)
+                .into_iter()
+                .map(|entry| entry.display_name)
+                .collect::<Vec<_>>(),
+            names,
+            "{change}"
+        );
+    }
+}
+
 #[test]
 fn keyboard_range_selection_extends_and_contracts_from_its_anchor() {
     let mut state = NavigationState::default();
@@ -812,7 +1067,10 @@ fn empty_is_distinct_from_loading_and_error() {
     state.navigate(location("/empty"), RequestId(1));
     assert_eq!(state.columns[0].load_state, LoadState::Loading);
 
-    assert_eq!(state.finish(RequestId(1), false, None, None), Some(0));
+    assert_eq!(
+        state.finish(RequestId(1), false, None, None),
+        Some((0, false))
+    );
     assert_eq!(state.columns[0].load_state, LoadState::Empty);
 }
 
@@ -821,7 +1079,10 @@ fn truncated_load_state_survives_until_reload() {
     let mut state = NavigationState::default();
     state.navigate(location("/partial"), RequestId(1));
 
-    assert_eq!(state.finish(RequestId(1), true, None, None), Some(0));
+    assert_eq!(
+        state.finish(RequestId(1), true, None, None),
+        Some((0, false))
+    );
     assert!(state.columns[0].truncated);
 
     state.reload_column(0, RequestId(2));
@@ -835,7 +1096,7 @@ fn reload_clears_the_resolved_delete_capability() {
 
     assert_eq!(
         state.finish(RequestId(1), false, None, Some(false)),
-        Some(0)
+        Some((0, false))
     );
     assert_eq!(state.can_delete_at(0), Some(false));
 
@@ -931,6 +1192,62 @@ fn reload_drops_selection_members_that_left_the_listing() {
 }
 
 #[test]
+fn reload_moves_a_removed_cursor_to_its_neighbour() {
+    let mut failures = Vec::new();
+    for (cursor, remaining, expected, reloads) in [
+        (2, &["alpha", "bravo"][..], Some(1), 1),
+        (1, &["alpha", "charlie"][..], Some(1), 1),
+        (0, &[][..], None, 1),
+        // A burst restarts the reload before the first one lists anything.
+        (1, &["alpha", "charlie"][..], Some(1), 2),
+    ] {
+        let mut state = NavigationState::default();
+        listing_without_a_load_cursor(&mut state);
+        assert!(state.set_selection(0, &[cursor], Some(cursor)));
+
+        for reload in 0..reloads {
+            state.reload_column(0, RequestId(2 + reload));
+        }
+        state.install_snapshot(
+            RequestId(1 + reloads),
+            remaining
+                .iter()
+                .map(|name| named_entry(&format!("/fixture/{name}"), name))
+                .collect(),
+        );
+
+        if state.active_focus() != Some((0, expected)) || !state.selected_positions(0).is_empty() {
+            failures.push(format!(
+                "cursor on entry {cursor}, {remaining:?} remain after {reloads} reloads: focus {:?} \
+                 and selection {:?}, expected cursor {expected:?} with nothing selected",
+                state.active_focus(),
+                state.selected_positions(0)
+            ));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn reload_leaves_no_neighbour_cursor_beside_an_open_child_column() {
+    let mut state = NavigationState::default();
+    listing_without_a_load_cursor(&mut state);
+    assert!(state.set_selection(0, &[1], Some(1)));
+    assert!(state.descend(0, location("/fixture/bravo"), RequestId(2)));
+
+    state.reload_column(0, RequestId(3));
+    state.install_snapshot(
+        RequestId(3),
+        vec![
+            named_entry("/fixture/alpha", "alpha"),
+            named_entry("/fixture/charlie", "charlie"),
+        ],
+    );
+
+    assert_eq!(state.columns[0].selected, None);
+}
+
+#[test]
 fn navigation_availability_tracks_history_and_parent() {
     let mut state = NavigationState::default();
     assert!(!state.can_go_back());
@@ -979,6 +1296,107 @@ fn parent_removes_the_deepest_committed_column() {
 
     let parent = state.go_parent().expect("the path has a parent");
     assert_eq!(parent.locations(), &[location("/home")]);
+}
+
+#[derive(Clone, Copy, Debug)]
+enum Delivery {
+    Snapshot,
+    OneBatch,
+    LaterBatch,
+}
+
+#[test]
+fn preferred_location_on_load_selects_the_child_when_it_arrives() {
+    let docs = |name: &str| named_entry(&format!("/docs/{name}"), name);
+    let mut failures = Vec::new();
+    for delivery in [Delivery::Snapshot, Delivery::OneBatch, Delivery::LaterBatch] {
+        let mut state = NavigationState::default();
+        state.navigate(location("/docs"), RequestId(1));
+        state.prefer_location_on_load(0, location("/docs/b2"));
+        match delivery {
+            Delivery::Snapshot => {
+                state.install_snapshot(RequestId(1), vec![docs("a1"), docs("b2"), docs("c3")]);
+            }
+            Delivery::OneBatch => {
+                state.apply_batch(RequestId(1), vec![docs("a1"), docs("b2"), docs("c3")]);
+            }
+            Delivery::LaterBatch => {
+                state.apply_batch(RequestId(1), vec![docs("a1")]);
+                if !state.selected_positions(0).is_empty()
+                    || state.active_focus() != Some((0, None))
+                {
+                    failures.push(format!(
+                        "{delivery:?}: the first batch selected {:?} before b2 arrived",
+                        state.selected_positions(0)
+                    ));
+                }
+                state.apply_batch(RequestId(1), vec![docs("b2"), docs("c3")]);
+            }
+        }
+        if state.selected_positions(0) != [1]
+            || state.active_focus() != Some((0, Some(1)))
+            || state.selection_anchor_position(0) != Some(1)
+        {
+            failures.push(format!(
+                "{delivery:?}: selection {:?}, cursor {:?}, anchor {:?}; expected b2 (1)",
+                state.selected_positions(0),
+                state.active_focus(),
+                state.selection_anchor_position(0)
+            ));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn preferred_location_falls_back_to_the_first_visible_entry() {
+    let docs = |name: &str| named_entry(&format!("/docs/{name}"), name);
+    let mut failures = Vec::new();
+    for (reason, preferred, listing) in [
+        ("missing", "/docs/b2", vec![docs("a1"), docs("c3")]),
+        (
+            "hidden",
+            "/docs/.b2",
+            vec![hidden_entry("/docs/.b2", ".b2"), docs("a1"), docs("c3")],
+        ),
+    ] {
+        let first_visible = listing.iter().position(|entry| !entry.is_hidden);
+        for batched in [false, true] {
+            let mut state = NavigationState::default();
+            state.navigate(location("/docs"), RequestId(1));
+            state.prefer_location_on_load(0, location(preferred));
+            if batched {
+                state.apply_batch(RequestId(1), listing.clone());
+                if !state.selected_positions(0).is_empty() {
+                    failures.push(format!(
+                        "{reason}, batched: selected {:?} before the listing completed",
+                        state.selected_positions(0)
+                    ));
+                }
+                state.finish(RequestId(1), false, None, None);
+            } else {
+                state.install_snapshot(RequestId(1), listing.clone());
+            }
+            let case = format!("{reason}, batched {batched}");
+            if state.active_focus() != Some((0, first_visible))
+                || state.selected_positions(0) != first_visible.into_iter().collect::<Vec<_>>()
+            {
+                failures.push(format!(
+                    "{case}: cursor {:?} and selection {:?}, expected the first visible entry",
+                    state.active_focus(),
+                    state.selected_positions(0)
+                ));
+            }
+            if state.reveal_pending(0)
+                || state
+                    .take_unresolved_location_reveal(0, RequestId(1))
+                    .is_some()
+            {
+                failures.push(format!("{case}: the preferred entry became a reveal"));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
 fn hidden_entry(path: &str, name: &str) -> FileEntry {
@@ -1264,21 +1682,35 @@ fn paging_skips_hidden_entries_when_hidden_files_are_not_shown() {
 
 #[test]
 fn paging_by_usize_max_jumps_to_the_first_or_last_visible_entry() {
-    let mut state = NavigationState::default();
-    state.navigate(location("/home"), RequestId(1));
-    state.apply_batch(
-        RequestId(1),
-        vec![
-            hidden_entry("/home/alpha", "alpha"),
-            named_entry("/home/bravo", "bravo"),
-            named_entry("/home/charlie", "charlie"),
-            hidden_entry("/home/delta", "delta"),
-        ],
-    );
+    let loaded = || {
+        let mut state = NavigationState::default();
+        state.navigate(location("/home"), RequestId(1));
+        state.apply_batch(
+            RequestId(1),
+            vec![
+                hidden_entry("/home/alpha", "alpha"),
+                named_entry("/home/bravo", "bravo"),
+                named_entry("/home/charlie", "charlie"),
+                hidden_entry("/home/delta", "delta"),
+            ],
+        );
+        state
+    };
 
+    let mut state = loaded();
     assert!(state.select(0, 2));
     assert_eq!(state.page_along(1, usize::MAX, None), Some((0, 2)));
     assert_eq!(state.page_along(-1, usize::MAX, None), Some((0, 1)));
+
+    for (direction, target) in [(-1, 1), (1, 2)] {
+        let mut state = loaded();
+        assert_eq!(state.columns[0].selected, None);
+        assert_eq!(
+            state.page_along(direction, usize::MAX, None),
+            Some((0, target)),
+            "jump {direction} without a cursor"
+        );
+    }
 }
 
 #[test]
@@ -1334,6 +1766,20 @@ fn moving_between_parent_and_child_columns_restores_their_selections() {
     assert_eq!((depth, position), (1, 0));
     assert_eq!(focused.location, location("/home/projects/strata"));
     assert_eq!(state.focus_child(), None);
+}
+
+#[test]
+fn dragging_an_open_parent_folder_does_not_claim_the_child_selection() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/home"), RequestId(1));
+    state.apply_batch(RequestId(1), vec![entry("/home/projects")]);
+    assert!(state.select(0, 0));
+    assert!(state.descend(0, location("/home/projects"), RequestId(2)));
+    state.apply_batch(RequestId(2), vec![entry("/home/projects/strata")]);
+    assert!(state.select(1, 0));
+
+    assert!(!state.active_selection_contains(0, 0));
+    assert!(state.active_selection_contains(1, 0));
 }
 
 #[test]
@@ -1477,23 +1923,6 @@ fn changing_sort_preferences_preserves_the_selected_entry() {
             .map(|(_, _, entry)| entry.display_name),
         Some("a".into())
     );
-}
-
-#[test]
-fn changed_sort_preferences_are_inherited_by_new_columns() {
-    let mut state = NavigationState::default();
-    state.navigate(location("/fixture"), RequestId(1));
-    let preferences = ViewPreferences {
-        folders_first: false,
-        sort_key: SortKey::Modified,
-        sort_direction: SortDirection::Descending,
-        ..ViewPreferences::default()
-    };
-
-    assert!(state.apply_sort_preferences(0, preferences).is_some());
-    assert!(state.descend(0, location("/fixture/child"), RequestId(2)));
-
-    assert_eq!(state.column_preferences(1), Some(preferences));
 }
 
 #[test]
@@ -2131,6 +2560,35 @@ fn compact_select_all_excludes_entries_that_arrive_later() {
     assert_eq!(state.selected_positions(0), [1, 2, 3]);
     assert_eq!(state.toggle_cursor_fill(), CursorToggle::Removed);
     assert_eq!(state.selected_positions(0), [1, 2]);
+}
+
+#[test]
+fn a_drag_over_select_all_keeps_later_entries_unselected() {
+    let mut state = NavigationState::default();
+    listing_without_a_load_cursor(&mut state);
+
+    assert_eq!(state.select_all(0), Some(2));
+    state.commit_selection();
+    assert!(state.set_selection(0, &[0, 2], Some(2)));
+    assert_eq!(selected_names(&state), ["alpha", "charlie"]);
+    state.apply_batch(
+        RequestId(1),
+        vec![named_entry("/fixture/aardvark", "aardvark")],
+    );
+
+    assert_eq!(state.selected_count(), 2);
+    assert_eq!(state.selected_positions(0), [1, 3]);
+    assert_eq!(selected_names(&state), ["alpha", "charlie"]);
+    // An atomic save renames a file the listing never showed.
+    state.apply_directory_change(
+        0,
+        &location("/fixture"),
+        DirectoryChange::Move {
+            from: location("/fixture/delta.tmp"),
+            entry: named_entry("/fixture/delta", "delta"),
+        },
+    );
+    assert_eq!(selected_names(&state), ["alpha", "charlie"]);
 }
 
 #[test]

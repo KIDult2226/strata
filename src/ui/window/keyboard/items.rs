@@ -17,13 +17,69 @@ use crate::{
         preview::{PreviewSurface, preview_target},
         tenxer_mode::Chord,
         window::{
-            SinglePaneArrow, home_directory, jump_direction, page_direction,
+            SinglePaneArrow, home_directory, home_end_direction, jump_direction, page_direction,
             sidebar_focus_direction, single_pane_arrow_action,
         },
     },
 };
 
+#[derive(Clone, Copy)]
+enum OpenInNewTarget {
+    Tab,
+    Window,
+}
+
 impl Dispatcher {
+    /// A focused file opens as with plain Enter.
+    fn open_focused_in_new(&self, browser: &Rc<Browser>, target: OpenInNewTarget) -> bool {
+        // Choosers have no tabs, and Ctrl+Enter there accepts the folder.
+        if self.chooser.is_some() {
+            return false;
+        }
+        let entry = self
+            .view
+            .selected_search_result()
+            .or_else(|| browser.focused_entry());
+        let Some(entry) = entry else {
+            return false;
+        };
+        if !entry.is_directory() {
+            self.activate_focused(browser);
+            return true;
+        }
+        let action = match target {
+            OpenInNewTarget::Tab => "win.open-tab-at",
+            OpenInNewTarget::Window => "win.open-window-at",
+        };
+        let uri = crate::adapters::gio_file_for_location(&entry.location)
+            .uri()
+            .to_variant();
+        if let Err(error) = self.window.activate_action(action, Some(&uri)) {
+            tracing::warn!(%error, action, "open-in-new location action unavailable");
+        }
+        true
+    }
+
+    fn tenxer_open_focused_in_new(
+        &self,
+        browser: &Rc<Browser>,
+        key: Key,
+        modifiers: Modifiers,
+    ) -> bool {
+        if !matches!(key, Key::Return | Key::KP_Enter) {
+            return false;
+        }
+        let mods = super::command_modifiers(modifiers);
+        let target = if mods == Modifiers::CONTROL_MASK {
+            OpenInNewTarget::Tab
+        } else if mods == Modifiers::SHIFT_MASK {
+            OpenInNewTarget::Window
+        } else {
+            return false;
+        };
+        self.open_focused_in_new(browser, target)
+    }
+
     pub(super) fn dismissal(&self, browser: &Browser, event: &KeyEvent) -> KeyResult {
         if event.key == Key::BackSpace
             && event.without(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK)
@@ -213,13 +269,12 @@ impl Dispatcher {
         if !event.without(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK) {
             return None;
         }
-        if self.view.item_view_has_focus() && matches!(event.key, Key::Home | Key::End) {
+        if self.view.item_view_has_focus()
+            && event.without(Modifiers::SUPER_MASK)
+            && let Some(direction) = home_end_direction(event.key)
+        {
             self.view.commit_selection();
-            if !event.shift()
-                && self
-                    .view
-                    .jump_parked_selection(if event.key == Key::Home { -1 } else { 1 })
-            {
+            if !event.shift() && self.view.jump_selection(direction) {
                 return Some(Propagation::Stop);
             }
         }
@@ -271,6 +326,25 @@ impl Dispatcher {
     }
 
     fn directory_navigation(&self, browser: &Rc<Browser>, event: &KeyEvent) -> KeyResult {
+        if matches!(event.key, Key::Return | Key::KP_Enter)
+            && !event.alt()
+            && event.without(Modifiers::SUPER_MASK)
+            && self.view.item_view_has_focus()
+            && !event.text_has_focus()
+        {
+            let target = if event.control() {
+                Some(OpenInNewTarget::Tab)
+            } else if event.shift() {
+                Some(OpenInNewTarget::Window)
+            } else {
+                None
+            };
+            if let Some(target) = target
+                && self.open_focused_in_new(browser, target)
+            {
+                return Some(Propagation::Stop);
+            }
+        }
         if !event.without(Modifiers::CONTROL_MASK | Modifiers::SUPER_MASK) {
             return Some(Propagation::Proceed);
         }
@@ -312,12 +386,15 @@ impl Dispatcher {
         if self.view.view_mode() != BrowserMode::Icons || !self.view.item_view_has_focus() {
             return false;
         }
+        if self.tenxer_open_focused_in_new(browser, key, modifiers) {
+            return true;
+        }
         let search = self.view.selected_search_results().is_some();
         let mods = super::command_modifiers(modifiers);
         if matches!(key, Key::less | Key::greater)
             && (mods.is_empty() || mods == Modifiers::SHIFT_MASK)
         {
-            return self.preview.media_key(key);
+            return self.preview.media_key(key, mods == Modifiers::SHIFT_MASK);
         }
         if search && !mods.is_empty() {
             return match mods {
@@ -442,6 +519,9 @@ impl Dispatcher {
         if self.view.view_mode() == BrowserMode::Icons || !self.view.item_view_has_focus() {
             return false;
         }
+        if self.tenxer_open_focused_in_new(browser, key, modifiers) {
+            return true;
+        }
         let mods = super::command_modifiers(modifiers);
         if mods == Modifiers::CONTROL_MASK {
             return self.tenxer_control_page(key)
@@ -473,20 +553,23 @@ impl Dispatcher {
             _ => return false,
         };
         if !filled {
-            self.shortcuts.show_feedback("Nothing to select");
+            self.shortcuts
+                .show_feedback(&crate::i18n::tr("Nothing to select"));
         }
         true
     }
 
     fn toggle_visual(&self, kind: VisualKind) {
         if !self.view.toggle_visual(kind) {
-            self.shortcuts.show_feedback("Nothing to select");
+            self.shortcuts
+                .show_feedback(&crate::i18n::tr("Nothing to select"));
         }
     }
 
     fn toggle_tenxer_cursor(&self) {
         if !self.view.toggle_cursor_and_advance() {
-            self.shortcuts.show_feedback("Nothing to select");
+            self.shortcuts
+                .show_feedback(&crate::i18n::tr("Nothing to select"));
         }
     }
 
@@ -535,7 +618,7 @@ impl Dispatcher {
             Key::H => self.go_back(browser),
             Key::L => self.go_forward(browser),
             Key::J | Key::K => self.scroll_open_preview(key),
-            Key::less | Key::greater if self.preview.media_key(key) => {}
+            Key::less | Key::greater if self.preview.media_key(key, true) => {}
             _ => return false,
         }
         true
@@ -559,7 +642,7 @@ impl Dispatcher {
             Key::g => self.shortcuts.arm_chord(Chord::Go),
             Key::i if self.toggle_file_preview(browser) => {}
             // Layouts with a dedicated `<` key send it without Shift.
-            Key::less | Key::greater if self.preview.media_key(key) => {}
+            Key::less | Key::greater if self.preview.media_key(key, false) => {}
             Key::i if self.view.view_mode() == BrowserMode::Columns => {
                 self.open_miller_child(browser);
             }

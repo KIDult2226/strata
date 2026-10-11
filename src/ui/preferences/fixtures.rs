@@ -13,6 +13,7 @@ pub(in crate::ui) fn non_default_preferences() -> Preferences {
         folder_peeking: true,
         single_click_previews: false,
         columns_mirror_selection: false,
+        columns_show_sizes: false,
         render_documents_by_default: false,
         hardware_accelerated_video_previews: Some(false),
         video_preview_backend: "vulkan".into(),
@@ -23,6 +24,9 @@ pub(in crate::ui) fn non_default_preferences() -> Preferences {
         tenxer_mode: true,
         filter_include_subfolders: false,
         show_keybinding_hints: false,
+        window_show_close: false,
+        window_show_minimize: true,
+        window_show_maximize: true,
         reduce_motion: true,
         element_glow: false,
         browser_mode: "list".into(),
@@ -60,6 +64,7 @@ pub(in crate::ui) fn non_default_preferences() -> Preferences {
         show_hidden: true,
         text_size: TextSize::new(24),
         interface_renderer: InterfaceRenderer::Cairo,
+        language: crate::i18n::Language::English,
         folders_first: false,
         sort_key: "size".into(),
         sort_direction: "descending".into(),
@@ -78,6 +83,8 @@ pub(in crate::ui) fn non_default_preferences() -> Preferences {
         date_format: "iso".into(),
         release_channel: "nightly".into(),
         default_directory: Some("/fixture/default".into()),
+        restore_tabs: false,
+        remember_folder_views: false,
         folder_colors: HashMap::from([("/fixture/folder".into(), "red".into())]),
         custom_icons: HashMap::from([(
             "/fixture/folder".into(),
@@ -123,14 +130,16 @@ pub(in crate::ui) fn seed_saved_preferences_for_test() {
 }
 
 pub(in crate::ui) fn seed_omarchy_for_test() {
+    seed_omarchy_colors_for_test(
+        "background = '#112233'\nforeground = '#ddeeff'\naccent = '#445566'\n",
+    );
+}
+
+pub(in crate::ui) fn seed_omarchy_colors_for_test(colors: &str) {
     let state = super::super::theme::omarchy_state_dir();
     fs::create_dir_all(state.join("theme")).expect("isolated Omarchy theme directory");
     fs::write(state.join("theme.name"), "fixture").expect("isolated Omarchy name");
-    fs::write(
-        state.join("theme/colors.toml"),
-        "background = '#112233'\nforeground = '#ddeeff'\naccent = '#445566'\n",
-    )
-    .expect("isolated Omarchy colors");
+    fs::write(state.join("theme/colors.toml"), colors).expect("isolated Omarchy colors");
 }
 
 impl PreferenceManager {

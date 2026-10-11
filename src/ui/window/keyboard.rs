@@ -15,12 +15,12 @@ use crate::{
     app::Browser,
     services::NavigationHistory,
     ui::{
-        browser::BrowserView, preview::PreviewDrawer, shortcut_footer::ShortcutFooter,
-        top_bar_navigation::TopBarNavigation,
+        browser::BrowserView, modal::is_closing_layer, preview::PreviewDrawer,
+        shortcut_footer::ShortcutFooter, top_bar_navigation::TopBarNavigation,
     },
 };
 
-use super::{SidebarState, SidebarView, TypeToSearch, visible_modal_layer};
+use super::{SidebarState, SidebarView, TypeToSearch, topmost_modal_layer, visible_modal_layer};
 
 mod chooser;
 pub(super) mod chords;
@@ -174,6 +174,13 @@ impl ChooserKeys {
         let browser = self.browser.upgrade()?;
         self.dispatcher.handle_chooser_key(&browser, key, modifiers)
     }
+
+    /// Returns false for a folder or no entry so the caller can navigate instead.
+    pub(in crate::ui) fn confirm_focused(&self) -> bool {
+        self.browser
+            .upgrade()
+            .is_some_and(|browser| self.dispatcher.chooser_confirm(&browser))
+    }
 }
 
 /// Leaving 10xer mode ends preview key ownership but keeps the drawer open.
@@ -199,7 +206,7 @@ fn release_preview_keys_on_mode_exit(
 }
 
 /// The **f** and **s** prompts filter and search as they are typed, and the
-/// footer reports the focused listing's filter or search while the mode is on.
+/// footer reports the focused listing's filter or search in every key map.
 fn bind_footer_filter(dispatcher: &Dispatcher) {
     let view = dispatcher.view.downgrade();
     dispatcher
@@ -216,12 +223,19 @@ fn bind_footer_filter(dispatcher: &Dispatcher) {
         });
     let view = dispatcher.view.downgrade();
     dispatcher.shortcuts.observe_filter(move || {
-        if !crate::ui::tenxer_mode::chrome_suppressed() {
-            return Some(None);
-        }
         view.upgrade()
             .map_or(Some(None), |view| view.filter_status())
     });
+    let shortcuts = dispatcher.shortcuts.clone();
+    dispatcher.view.set_footer_filter_focus(Rc::new(move || {
+        shortcuts.prompt_has_focus()
+            && matches!(
+                shortcuts.open_prompt_kind(),
+                Some(
+                    crate::ui::tenxer_mode::Prompt::Filter | crate::ui::tenxer_mode::Prompt::Search
+                )
+            )
+    }));
     let shortcuts = dispatcher.shortcuts.clone();
     dispatcher
         .view
@@ -230,6 +244,21 @@ fn bind_footer_filter(dispatcher: &Dispatcher) {
     dispatcher
         .view
         .connect_search_selection_changed(Rc::new(move || shortcuts.schedule_filter_refresh()));
+    // Over a fill, motion and Space move the result cursor by focus alone, and
+    // GTK may land that focus after the selection change has been reported. In
+    // Columns the footer also follows the focused column.
+    let shortcuts = dispatcher.shortcuts.clone();
+    let handler = dispatcher
+        .window
+        .connect_focus_widget_notify(move |_| shortcuts.schedule_filter_refresh());
+    // A closed tab's view unrealizes while its window lives on.
+    let window = dispatcher.window.downgrade();
+    let handler = Cell::new(Some(handler));
+    dispatcher.view.widget().connect_unrealize(move |_| {
+        if let (Some(window), Some(handler)) = (window.upgrade(), handler.take()) {
+            window.disconnect(handler);
+        }
+    });
 }
 
 fn bind_prompt_hints(dispatcher: &Dispatcher) {
@@ -672,6 +701,7 @@ impl Dispatcher {
             header_left_boundary: false,
         };
         self.window_commands(&event)
+            .or_else(|| self.default_tab_navigation(&event))
             .or_else(|| self.inline_editing(&event))
             .or_else(|| self.filter_and_location_commands(&event))
             .or_else(|| self.video_controls(&event))
@@ -721,7 +751,7 @@ impl Dispatcher {
     }
 
     fn input_owner(&self, browser: &Browser, key: Key, modifiers: Modifiers) -> KeyResult {
-        if let Some(layer) = visible_modal_layer(&self.window) {
+        if let Some(layer) = topmost_modal_layer(&self.window, &is_closing_layer) {
             let focus_is_inside = gtk::prelude::RootExt::focus(&self.window)
                 .is_some_and(|focus| focus == layer || focus.is_ancestor(&layer));
             self.shortcuts.cancel_chord();
@@ -729,6 +759,12 @@ impl Dispatcher {
                 layer.grab_focus();
                 return Some(Propagation::Stop);
             }
+            return Some(Propagation::Proceed);
+        }
+        if visible_modal_layer(&self.window).is_some() {
+            // A layer animating out has dropped focus; only window accelerators,
+            // which skip closing layers, may act until focus is restored.
+            self.shortcuts.cancel_chord();
             return Some(Propagation::Proceed);
         }
         if self.native_menu_owns_input() {
@@ -747,6 +783,14 @@ impl Dispatcher {
                 return Some(result);
             }
             return Some(self.prompt_key(browser, key, modifiers));
+        }
+        if self.preview.handle_find_key(
+            key,
+            modifiers,
+            self.type_to_search.preferences.tenxer_mode(),
+        ) {
+            self.shortcuts.cancel_chord();
+            return Some(Propagation::Stop);
         }
         if let Some(result) = self.tenxer_preview_text(browser, key, modifiers) {
             return Some(result);
@@ -775,7 +819,7 @@ impl Dispatcher {
     }
 
     fn inline_editing_active(&self) -> bool {
-        self.view.rename_is_active() || self.view.new_entry_is_active()
+        self.view.inline_edit_is_open()
     }
 
     fn native_menu_owns_input(&self) -> bool {

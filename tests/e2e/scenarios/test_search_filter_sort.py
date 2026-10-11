@@ -66,25 +66,88 @@ def test_type_to_search_finds_matches_anywhere_in_the_tree(strata, mode, root):
     )
 
 
-@pytest.mark.parametrize("mode", ALL_MODES)
-def test_filtering_a_pane_narrows_the_listing(strata, mode, root):
+# Escape from the field and from a focused result. Recursive hits (the default) and the
+# in-place Columns filter (Include subfolders off) are separate result routes in Columns;
+# Icons and List show both in the same results view.
+ESCAPE_CASES = [
+    *[
+        pytest.param(
+            mode.values[0], route, "spreadsheet", "spreadsheet.csv",
+            marks=mode.marks, id=f"{mode.id}-{route}",
+        )
+        for mode in ALL_MODES
+        for route in ("input", "result")
+    ],
+    pytest.param(
+        "Columns", "result", "todo", "todo.txt",
+        marks=pytest.mark.preferences(browser_mode="columns", filter_include_subfolders=False),
+        id="columns-result-in-place",
+    ),
+]
+
+
+@pytest.mark.parametrize("mode,route,query,match", ESCAPE_CASES)
+def test_filtering_a_pane_narrows_the_listing(strata, mode, route, query, match, root):
     strata.select_entry("readme.md", directory=root)
+    strata.wait(
+        lambda: footer_label(strata, "1 file selected (10 B)") is not None,
+        "the footer to describe the directory selection",
+    )
 
     strata.keyboard.press("ctrl+f")
     field = strata.editable_field()
-    strata.keyboard.type_text("spreadsheet")
-    strata.wait(lambda: field.text == "spreadsheet", "the filter query to be typed")
+    strata.keyboard.type_text(query)
+    strata.wait(lambda: field.text == query, "the filter query to be typed")
 
     strata.wait(
-        lambda: strata.matches(root) == ["spreadsheet.csv"],
+        lambda: strata.matches(root) == [match],
         "the filter to list only matching entries",
     )
+    strata.wait(
+        lambda: footer_label(strata, "1 item") is not None
+        and footer_label(strata, "1 file selected (10 B)") is None,
+        "the footer to report the displayed result total",
+    )
+    assert footer_label(strata, f"filter: {query}") is None
+    if route == "input":
+        strata.keyboard.press("ctrl+a")
+        strata.keyboard.type_text("zzz")
+        strata.wait(lambda: field.text == "zzz", "the miss query to be typed")
+        strata.wait(
+            lambda: footer_label(strata, "0 items") is not None,
+            "the footer to report 0 items on a miss",
+        )
+        strata.keyboard.press("ctrl+a")
+        strata.keyboard.type_text(query)
+        strata.wait(
+            lambda: strata.matches(root) == [match] and footer_label(strata, "1 item") is not None,
+            "the original query to list its match again",
+        )
+    if route == "result":
+        strata.keyboard.press("Down")
+        strata.wait_for_focused_entry(match)
+        assert not field.has_state("focused")
 
     strata.keyboard.press("Escape")
     strata.wait(
         lambda: strata.entry_names(root) == ROOT_ENTRIES,
         "Escape to restore the full listing",
     )
+    # The directory's own selection and cursor return, whichever result had focus.
+    strata.wait_for_focused_entry("readme.md")
+    strata.wait(
+        lambda: strata.selected_names(root) == ["readme.md"],
+        "the listing to show the directory's selection",
+    )
+    assert strata.window.find(role="text", states={"editable", "focused"}) is None
+    strata.wait(
+        lambda: footer_label(strata, "1 file selected (10 B)") is not None,
+        "the footer to describe the directory selection again",
+    )
+
+
+def footer_label(strata, text):
+    return strata.window.find(role="label", name=text)
 
 
 @pytest.fixture
@@ -302,7 +365,7 @@ def test_sorting_by_size_reorders_the_files(strata, root):
     strata.pointer.click(strata.header_button("Choose sort field"))
     strata.pointer.click(
         strata.wait(
-            lambda: strata.window.find(role="button", name="Size"),
+            lambda: strata.window.find(role="radio menu item", name="Size"),
             "the Size sort option",
         )
     )
@@ -698,6 +761,64 @@ def test_tenxer_footer_search_covers_subfolders_and_restores_the_filter(strata, 
         lambda: strata.window.find(role="label", name="filter: do") is not None
         and strata.window.find(role="label", name="search: photo") is None,
         "the footer to show the restored filter",
+    )
+
+
+TXT_HITS = {
+    "notes.txt": "documents/notes.txt",
+    "diagram.txt": "pictures/diagram.txt",
+    "photo.txt": "pictures/photo.txt",
+    "todo.txt": "todo.txt",
+}
+
+
+def footer_hit(strata):
+    """The hit path beside the footer's search mark: folder and name labels."""
+    mark = strata.window.find(role="label", name="search: txt")
+    if mark is None or mark.parent is None:
+        return None
+    for part in mark.parent.children:
+        if part.role != "panel":
+            continue
+        text = "".join(
+            label.name for label in part.children if label.role == "label" and label.is_rendered()
+        )
+        if text in TXT_HITS.values():
+            return text
+    return None
+
+
+@pytest.mark.preferences(
+    tenxer_mode=True,
+    type_to_search=False,
+    single_click_previews=False,
+    filter_include_subfolders=False,
+)
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_tenxer_footer_hit_path_follows_the_cursor_over_a_fill(strata, mode, root):
+    strata.keyboard.press("s")
+    field = strata.editable_field()
+    strata.keyboard.type_text("txt")
+    strata.wait(lambda: field.text == "txt", "the search query to stay in the prompt")
+    strata.wait(
+        lambda: sorted(strata.matches(root)) == sorted(TXT_HITS),
+        "the search to list every .txt hit",
+    )
+    strata.keyboard.press("Return")
+    order = strata.matches(root)
+    strata.wait_for_focused_entry(order[0])
+    strata.wait(
+        lambda: footer_hit(strata) == TXT_HITS[order[0]],
+        "the footer to show the first hit",
+    )
+
+    # Space focuses the next hit only once GTK lands focus there; the Rust
+    # dispatch tests own the other cursor motions over a fill.
+    strata.keyboard.press("space")
+    strata.wait_for_focused_entry(order[1])
+    strata.wait(
+        lambda: footer_hit(strata) == TXT_HITS[order[1]],
+        f"the footer hit to follow Space to {order[1]}",
     )
 
 

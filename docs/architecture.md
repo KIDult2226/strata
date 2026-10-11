@@ -54,7 +54,10 @@ header alignment, icon bezels, body and action spacing, focus treatment, and sem
 danger states; dialog-specific code supplies only content and behavior. The search palette remains a
 specialized command interface because its query field and results are one continuous keyboard
 surface. Settings remains a specialized navigable workspace rather than an action dialog. Native
-platform choosers, such as GTK's color dialog, are also kept native.
+platform choosers, such as GTK's color dialog, are also kept native. `style.css` themes the color
+chooser's buttons and editor controls with selectors on GTK's `window.dialog.colorchooser` and
+`colorchooser` nodes that reuse the action-dialog and form-control rules, instead of wrapping the
+chooser in the modal shell.
 
 ### Browser presentation modes
 
@@ -72,8 +75,11 @@ receive incremental updates. Shared browser effects in `ui/browser/events.rs` st
 before alternate-mode dispatch. Browser notifications remain synchronous: pane/query
 updates must release `ModeViews` borrows before notifying observers. Load completion
 returns a selection-restoration action; the caller releases `ModeViews` before
-applying it, with the saved position already taken out of `ListNavigation`. Footer
+applying it, with the saved position already taken out of `PaneNavigation`. Footer
 and selection observers therefore see restored state without dropped events.
+`NavigationStarting` and `ColumnReloading` are the two pre-mutation capture events:
+the outgoing directory, or a column about to be cleared for a reload, is still
+readable when they arrive.
 
 Pane helpers share string-model splicing, but authoritative entry borrows end before GTK
 notifications. Reload detaches selection/filter models without detaching the collection
@@ -117,9 +123,15 @@ marquees claim the sequence only after that threshold, leaving simple clicks and
 modifier-clicks intact. Chrome-origin drags transfer focus to a visible item in the target
 collection after crossing the threshold, giving active selection feedback without scrolling
 to an old cursor. Sidebar origins also switch browser input ownership to the pointer, so
-keyboard actions use the selected pane rather than stale hover state. A completed plain
-click on background clears selections; returning to an inactive column then
-selects its first visible entry. Presses and marquee releases do not clear selections. Click
+keyboard actions use the selected pane rather than stale hover state. A plain press on pane
+background or on blank chrome beside the panes (sidebar, pane headers, the strip beside the
+last column) clears the selection immediately; Ctrl/Shift presses keep it so the marquee can
+union or range from it, and marquee releases never clear. Returning to an inactive column then
+selects its first visible entry. A preview that is showing something (content or its
+placeholder) is a drag-only origin: a plain click there leaves the selection alone and only a
+drag past the threshold changes it, while the empty reserved preview slot clears like the strip
+beside the columns. Presses on controls, including disabled ones and drag handles such as the
+preview header, never start a marquee. Click
 activation and automatic preview wait for release and reject cancelled gestures, drag motion,
 and recycled items. Marquees anchor and cache mapped item geometry in scroll-content
 coordinates, independent of native GtkScrollable or GtkViewport layout. Edge and wheel scrolling
@@ -233,7 +245,9 @@ Filesystem work for Trash lives in `adapters/trash.rs`. Measurement shares one e
 across root and descendant batches; depth truncation and unreadable descendants remain branch-local.
 Deleting Trash streams its own batches, independently of any incomplete measurement. Native path
 and GIO URI conversion lives in `adapters/gio_location.rs`, shared by files, operations, preview and
-browser presentation. It preserves native bytes and sanitizes credentials on inbound GIO locations.
+browser presentation. It preserves native bytes, keeps GLib's normalized percent-encoding (so names
+that are not valid UTF-8 and encoded slashes survive), and sanitizes credentials on inbound GIO
+locations.
 
 Local archive operations live under `adapters/local_operations/archive/`:
 
@@ -318,6 +332,28 @@ state and routing borrows before synchronous observer dispatch, allowing observe
 navigate safely. Sorting, metadata scheduling, and cancellation remain in the browser
 controller; event routing does not change those policies.
 
+A folder's own directory monitor reports its deletion, its rename, and its move alike, as
+the removal of the folder itself. A column whose parent column is its parent folder leaves
+that report to the parent column's monitor, which sees the departure as a change to one of
+its entries; any other column, including the depth-0 folder, is checked in
+`directory_changes.rs`. A folder that validates again (deleted and recreated) reloads in
+place, which renews its monitor. A missing depth-0 folder is looked up in its parent by
+the identity it had when it loaded: device, inode and, where the filesystem records it,
+birth time, queried off the main thread (`FileSource::query_location_identity`). The birth
+time keeps a new folder that reuses the inode from passing for a rename. Found there
+(`find_by_identity`), the folder was renamed in place: the search indexes are rebased and
+the open columns relocate (`ColumnsRelocated`), as for an in-app rename. Not found, with a
+parent that cannot be listed, or before its identity is known, it departed: the nearest
+existing ancestor that the source allows is restored without a history entry, or the
+folder shows its read error when there is none. Backends without identities treat every
+rename as a departure. A folder or ancestor that cannot be reached (unmounted, offline, or
+not permitted) stays as it is. A monitor can lose the removal report, when a burst of
+changes turns its batch into a rescan or when a reload supersedes the check, so a failed
+reload of a depth-0 folder that loaded before runs the same check; it leaves the read
+error in place unless the folder is confirmed gone. A departure that arrives during a
+deletion, restoration, or transfer waits with the operation's other changes, which apply
+first.
+
 ### Browser staged publication
 
 `app/browser/publication.rs` owns staged row publication on the same `Browser`, not a
@@ -396,8 +432,13 @@ focus traversal, transient dismissal, then item/directory navigation. The privat
 introducing another browser controller. A stage returning `None` continues through Strata's
 handlers; `Some(Propagation::Proceed)` ends dispatch and leaves the event to GTK. In
 particular, editable controls and native single-pane selection must not fall through to
-browser commands. The file chooser retains its separate, restricted keyboard policy
-when 10xer mode is off.
+browser commands. GTK runs the `DEFAULT_ACCELS` window accelerators (`ui/window.rs`) only
+after the dispatcher yields, which is exactly when a modal or an inline edit owns input, so
+`composition::add_guarded_window_action` installs their `win.*` actions with a gate: they
+do nothing while a modal layer other than the action's own (the search palette) is on top
+and not already closing, or while an inline rename field or new entry is open. The
+dispatcher yields on the same `BrowserView::inline_edit_is_open` predicate. The file
+chooser retains its separate, restricted keyboard policy when 10xer mode is off.
 
 When [10xer mode](10xer-mode.md) is on, that dispatcher runs its 10xer stages
 (`tenxer_keys` and the `keyboard/` modules) ahead of the default pipeline. The
@@ -430,7 +471,7 @@ shared Settings/F1 presentation; default F1 navigation remains view-specific.
 
 ### File source
 
-Enumerates locations, retrieves metadata, watches changes, and reports supported actions. Begin with local files. Avoid designing a universal remote filesystem API before a second backend exists.
+Enumerates locations, retrieves metadata, watches changes, identifies folders across renames, and reports supported actions. Begin with local files. Avoid designing a universal remote filesystem API before a second backend exists.
 
 ### Operation service
 

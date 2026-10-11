@@ -24,9 +24,9 @@ use crate::{
     model::{EntryKind, FileEntry, Location, MetadataValue},
     services::{
         DirectoryChange, DirectoryEvent, DirectoryRequest, FileSource, LoadHandle,
-        LocationValidationError, MetadataOutcome, MetadataRequest, MetadataUpdate, RequestId,
-        backend_unavailable_message, is_hidden_name, is_image_path, is_media_path,
-        native_hidden_names, native_kind, sanitize_failure_message,
+        LocationIdentity, LocationValidationError, MetadataOutcome, MetadataRequest,
+        MetadataUpdate, RequestId, backend_unavailable_message, is_hidden_name, is_image_path,
+        is_media_path, native_hidden_names, native_kind, sanitize_failure_message,
     },
 };
 
@@ -253,7 +253,8 @@ fn map_validation_error(error: std::io::Error) -> LocationValidationError {
     match error.kind() {
         ErrorKind::NotFound => LocationValidationError::Missing,
         ErrorKind::PermissionDenied => LocationValidationError::Inaccessible,
-        _ => LocationValidationError::Unavailable(error.to_string()),
+        ErrorKind::NotADirectory => LocationValidationError::NotDirectory,
+        _ => LocationValidationError::Unavailable(crate::services::io_error_detail(&error)),
     }
 }
 
@@ -269,7 +270,9 @@ fn uri_validation_result(
                 location.uri_value().unwrap_or_default(),
             ))
         } else {
-            LocationValidationError::Unavailable(sanitize_failure_message(&error.to_string()))
+            LocationValidationError::Unavailable(sanitize_failure_message(
+                &crate::services::gio_error_detail(&error),
+            ))
         }
     })?;
     match info.file_type() {
@@ -321,6 +324,33 @@ pub(crate) async fn query_file_entry(location: Location) -> Result<FileEntry, gl
         )
         .await?;
     Ok(entry_from_info(location, info))
+}
+
+fn listed_entry(
+    request_id: RequestId,
+    location: &Location,
+    directory: &gio::File,
+    info: gio::FileInfo,
+) -> Option<FileEntry> {
+    let Some(child) = location_for_file(&directory.child(info.name())) else {
+        tracing::warn!(
+            request_id = request_id.0,
+            backend = %location.backend_name(),
+            "skipped a directory entry whose URI could not be parsed"
+        );
+        let display_name = info
+            .has_attribute(gio::FILE_ATTRIBUTE_STANDARD_DISPLAY_NAME)
+            .then(|| info.display_name());
+        tracing::debug!(
+            request_id = request_id.0,
+            location = %location.diagnostic_path(),
+            display_name = ?display_name,
+            name_bytes = info.name().as_os_str().len(),
+            "skipped directory entry"
+        );
+        return None;
+    };
+    Some(entry_from_info(child, info))
 }
 
 fn entry_from_info(location: Location, info: gio::FileInfo) -> FileEntry {
@@ -540,7 +570,7 @@ fn scan_native_directory(
 ) -> NativeEnumeration {
     let children = match fs::read_dir(path) {
         Ok(children) => children,
-        Err(error) => return NativeEnumeration::Failed(error.to_string()),
+        Err(error) => return NativeEnumeration::Failed(crate::services::io_error_message(&error)),
     };
     let hidden_names = native_hidden_names(path);
     let mut entries = Vec::with_capacity(1024);
@@ -555,7 +585,9 @@ fn scan_native_directory(
         }
         let child = match child {
             Ok(child) => child,
-            Err(error) => return NativeEnumeration::Failed(error.to_string()),
+            Err(error) => {
+                return NativeEnumeration::Failed(crate::services::io_error_message(&error));
+            }
         };
         let native_name = child.file_name();
         let is_hidden = is_hidden_name(&native_name, &hidden_names);
@@ -566,7 +598,9 @@ fn scan_native_directory(
         let file_type = match child.file_type() {
             Ok(file_type) => file_type,
             Err(error) if error.kind() == ErrorKind::NotFound => continue,
-            Err(error) => return NativeEnumeration::Failed(error.to_string()),
+            Err(error) => {
+                return NativeEnumeration::Failed(crate::services::io_error_message(&error));
+            }
         };
         let path = child.path();
         let kind = native_kind(file_type, &path);
@@ -1039,7 +1073,7 @@ impl FileSource for LocalFileSource {
         let file = gio::File::for_uri(
             location
                 .uri_value()
-                .ok_or_else(|| LocationValidationError::Unavailable("invalid URI".into()))?,
+                .ok_or(LocationValidationError::InvalidUri)?,
         );
         uri_validation_result(
             location,
@@ -1190,8 +1224,7 @@ impl FileSource for LocalFileSource {
                         let mut entries: Vec<_> = files
                             .into_iter()
                             .filter_map(|info| {
-                                let child = directory.child(info.name());
-                                Some(entry_from_info(location_for_file(&child)?, info))
+                                listed_entry(request_id, &location, &directory, info)
                             })
                             .collect();
                         let remaining_capacity = request.max_entries.saturating_sub(total_entries);
@@ -1394,7 +1427,7 @@ impl FileSource for LocalFileSource {
                 event,
             );
             let Some(change) =
-                change.and_then(|change| visible_monitor_change(change, include_hidden))
+                change.and_then(|change| visible_monitor_change(&watched, change, include_hidden))
             else {
                 return;
             };
@@ -1433,6 +1466,51 @@ impl FileSource for LocalFileSource {
             pending.borrow_mut().clear();
             let _cancelled = monitor.cancel();
         }))
+    }
+
+    fn query_location_identity(
+        &self,
+        location: Location,
+        emit: Rc<dyn Fn(Option<LocationIdentity>)>,
+    ) -> LoadHandle {
+        let Some(path) = location.native_path().map(Path::to_path_buf) else {
+            emit(None);
+            return LoadHandle::new(|| {});
+        };
+        // A hung network mount must not stall the window.
+        let task = glib::MainContext::default().spawn_local(async move {
+            let identity = gio::spawn_blocking(move || {
+                fs::symlink_metadata(&path)
+                    .ok()
+                    .and_then(|metadata| folder_identity(&metadata))
+            })
+            .await
+            .ok()
+            .flatten();
+            emit(identity);
+        });
+        LoadHandle::new(move || task.abort())
+    }
+
+    fn find_by_identity(
+        &self,
+        parent: Location,
+        identity: LocationIdentity,
+        emit: Rc<dyn Fn(Option<Location>)>,
+    ) -> LoadHandle {
+        let Some(directory) = parent.native_path().map(Path::to_path_buf) else {
+            emit(None);
+            return LoadHandle::new(|| {});
+        };
+        let task = glib::MainContext::default().spawn_local(async move {
+            let found =
+                gio::spawn_blocking(move || native_entry_with_identity(&directory, identity))
+                    .await
+                    .ok()
+                    .flatten();
+            emit(found.map(Location::local));
+        });
+        LoadHandle::new(move || task.abort())
     }
 }
 
@@ -1872,6 +1950,38 @@ fn log_directory_load_started(request_id: RequestId, location: &Location) {
     );
 }
 
+fn folder_identity(metadata: &fs::Metadata) -> Option<LocationIdentity> {
+    metadata.is_dir().then(|| LocationIdentity {
+        device: metadata.dev(),
+        inode: metadata.ino(),
+        created: metadata.created().ok(),
+    })
+}
+
+fn native_entry_with_identity(directory: &Path, identity: LocationIdentity) -> Option<PathBuf> {
+    use std::os::unix::fs::DirEntryExt;
+    let entries: Vec<fs::DirEntry> = fs::read_dir(directory).ok()?.flatten().collect();
+    let matches = |entry: &&fs::DirEntry| {
+        entry
+            .metadata()
+            .ok()
+            .and_then(|metadata| folder_identity(&metadata))
+            .is_some_and(|candidate| identity.matches(&candidate))
+    };
+    // Btrfs subvolumes, overlayfs and FUSE can list a different inode than stat reports.
+    entries
+        .iter()
+        .filter(|entry| entry.ino() == identity.inode)
+        .find(matches)
+        .or_else(|| {
+            entries
+                .iter()
+                .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
+                .find(matches)
+        })
+        .map(fs::DirEntry::path)
+}
+
 fn monitor_location_is_hidden(location: &Location) -> bool {
     location
         .file_name()
@@ -1879,6 +1989,7 @@ fn monitor_location_is_hidden(location: &Location) -> bool {
 }
 
 fn visible_monitor_change(
+    watched: &Location,
     change: PendingMonitorChange,
     include_hidden: bool,
 ) -> Option<PendingMonitorChange> {
@@ -1886,6 +1997,10 @@ fn visible_monitor_change(
         return Some(change);
     }
     match change {
+        // The open folder's own departure counts even when its name is hidden.
+        PendingMonitorChange::Remove(location) if location == *watched => {
+            Some(PendingMonitorChange::Remove(location))
+        }
         PendingMonitorChange::Upsert(location) if monitor_location_is_hidden(&location) => None,
         PendingMonitorChange::Remove(location) if monitor_location_is_hidden(&location) => None,
         PendingMonitorChange::Move { from, to } => {

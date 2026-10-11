@@ -224,15 +224,19 @@ fn deletion_error_summaries_are_bounded_and_report_the_failure_count() {
         .map(|index| format!("item-{index}: denied"))
         .collect::<Vec<_>>();
 
-    let summary = deletion_error_summary(&errors);
+    let summary = deletion_error_summary(&errors, true);
 
     assert!(summary.starts_with("10 items could not be deleted"));
     assert!(summary.contains("• item-1: denied"));
     assert!(summary.contains("• item-8: denied"));
     assert!(!summary.contains("• item-9: denied"));
-    assert!(summary.ends_with("…and 2 more"));
+    assert!(summary.ends_with("… and 2 more items"));
     assert!(
-        operation_error_summary(&errors[..1], "restored")
+        deletion_error_summary(&errors[..1], false)
+            .starts_with("1 item could not be moved to Trash")
+    );
+    assert!(
+        operation_error_summary(&errors[..1], FailedAction::Restore)
             .starts_with("1 item could not be restored")
     );
 }
@@ -320,12 +324,26 @@ fn an_unrelated_trash_failure_is_not_retryable() {
 }
 
 #[test]
-fn other_deletion_failures_keep_the_raw_error() {
-    let error = glib::Error::new(gio::IOErrorEnum::PermissionDenied, "access denied");
+fn other_deletion_failures_name_the_item_and_reason() {
+    for (code, raw, expected) in [
+        (
+            gio::IOErrorEnum::PermissionDenied,
+            "Unable to trash file /tmp/secret.txt: access denied",
+            "secret.txt: Permission denied",
+        ),
+        (
+            gio::IOErrorEnum::Failed,
+            "disk exploded",
+            "secret.txt: disk exploded",
+        ),
+    ] {
+        let error = glib::Error::new(code, raw);
 
-    let message = deletion_error_message("secret.txt", false, &error);
-
-    assert_eq!(message, "secret.txt: access denied");
+        assert_eq!(
+            deletion_error_message("secret.txt", false, &error),
+            expected
+        );
+    }
 }
 
 #[test]
@@ -834,4 +852,49 @@ fn an_already_cancelled_recursive_delete_preserves_the_root() -> Result<(), Box<
     assert!(root.exists());
     fs::remove_dir_all(root)?;
     Ok(())
+}
+
+#[test]
+fn trashing_reports_each_items_identity_and_a_permanent_delete_reports_none() {
+    crate::test_support::gtk_test(
+        "adapters::local_operations::tests::deletion::trashing_reports_each_items_identity_and_a_permanent_delete_reports_none",
+        || {
+            for permanent in [false, true] {
+                let root = tempfile::tempdir().expect("root");
+                let folder = root.path().join("folder");
+                fs::create_dir(&folder).expect("folder");
+                let identity = TrashedOriginal::at_path(&folder).expect("identity");
+                let events = Rc::new(RefCell::new(Vec::new()));
+                let emitted = events.clone();
+                let _operation = LocalOperationProvider.delete(
+                    DeleteRequest {
+                        id: OperationRequestId(95),
+                        entries: vec![directory_entry(&folder)],
+                        permanent,
+                    },
+                    Rc::new(move |event| emitted.borrow_mut().push(event)),
+                );
+                wait_for_operation(&events, |event| {
+                    matches!(
+                        event,
+                        OperationEvent::Deleted { .. } | OperationEvent::CompletedWithErrors { .. }
+                    )
+                });
+
+                let events = events.borrow();
+                assert!(matches!(
+                    events.last(),
+                    Some(OperationEvent::Deleted { .. })
+                ));
+                assert_eq!(
+                    trashed_items(&events),
+                    if permanent {
+                        Vec::new()
+                    } else {
+                        vec![(Location::local(&folder), identity)]
+                    }
+                );
+            }
+        },
+    );
 }

@@ -17,6 +17,13 @@ fn open() -> (gtk::ApplicationWindow, Rc<TabWindow>) {
 }
 
 fn open_in(application: &gtk::Application) -> (gtk::ApplicationWindow, Rc<TabWindow>) {
+    open_persisting(application, true)
+}
+
+fn open_persisting(
+    application: &gtk::Application,
+    persist: bool,
+) -> (gtk::ApplicationWindow, Rc<TabWindow>) {
     let preferences = PreferenceManager::shared();
     preferences.set_tenxer_mode(false);
     let window = gtk::ApplicationWindow::builder()
@@ -24,7 +31,7 @@ fn open_in(application: &gtk::Application) -> (gtk::ApplicationWindow, Rc<TabWin
         .default_width(1000)
         .default_height(700)
         .build();
-    let tabs = TabWindow::new(&window, &preferences);
+    let tabs = TabWindow::new(&window, &preferences, persist);
     window.present();
     (window, tabs)
 }
@@ -51,6 +58,28 @@ fn load(browser: &BrowserView, location: Location) {
             .column_snapshot(0)
             .is_some_and(|column| !column.loading)
     });
+}
+
+fn button_with_label(widget: &gtk::Widget, label: &str) -> Option<gtk::Button> {
+    if let Ok(button) = widget.clone().downcast::<gtk::Button>()
+        && button.label().as_deref() == Some(label)
+    {
+        return Some(button);
+    }
+    let mut child = widget.first_child();
+    while let Some(widget) = child {
+        child = widget.next_sibling();
+        if let Some(button) = button_with_label(&widget, label) {
+            return Some(button);
+        }
+    }
+    None
+}
+
+fn location_action_value(location: &Location) -> glib::Variant {
+    crate::adapters::gio_file_for_location(location)
+        .uri()
+        .to_variant()
 }
 
 fn find_widget(
@@ -129,6 +158,44 @@ fn sibling_fixture(
     .downcast::<gtk::Label>()
     .expect("label");
     (root, window, tabs, view, title)
+}
+
+#[test]
+fn saved_window_buttons_survive_tab_chrome_refreshes() {
+    gtk_test(
+        "ui::window::composition::tabs::tests::saved_window_buttons_survive_tab_chrome_refreshes",
+        || {
+            PreferenceManager::seed_saved_preferences_for_test();
+            let (window, tabs) = open();
+            let assert_buttons = |expected: [bool; 3]| {
+                let tab = tabs.active_tab();
+                let header = &tab.content.header;
+                for (button, visible) in [&header.minimize, &header.maximize, &header.close]
+                    .into_iter()
+                    .zip(expected)
+                {
+                    assert_eq!(button.is_visible(), visible);
+                }
+            };
+            assert_buttons([true, true, false]);
+            tabs.new_tab();
+            assert_buttons([true, true, false]);
+            tabs.select(1);
+            assert_buttons([true, true, false]);
+            tabs.preferences.set_window_show_close(true);
+            tabs.preferences.set_window_show_minimize(false);
+            tabs.preferences.set_window_show_maximize(false);
+            assert_buttons([false, false, true]);
+            tabs.select(2);
+            assert_buttons([false, false, true]);
+            tabs.preferences.set_window_show_close(false);
+            tabs.close(2);
+            assert_buttons([false, false, false]);
+            tabs.new_tab();
+            assert_buttons([false, false, false]);
+            window.destroy();
+        },
+    );
 }
 
 #[test]
@@ -880,6 +947,248 @@ fn operations_in_inactive_tabs_prevent_tab_and_window_closure() {
             }
             window.destroy();
             assert!(operations.cancelled(operation));
+        },
+    );
+}
+
+fn tab_locations(tabs: &TabWindow) -> Vec<Option<Location>> {
+    tabs.tabs
+        .borrow()
+        .iter()
+        .map(|tab| tab.content.browser.browser().active_location())
+        .collect()
+}
+
+fn saved_session() -> Option<crate::ui::tabs_session::RestoredSession> {
+    crate::ui::tabs_session::load_restorable()
+}
+
+#[test]
+fn plain_launch_without_saved_session_keeps_single_tab() {
+    gtk_test(
+        "ui::window::composition::tabs::tests::plain_launch_without_saved_session_keeps_single_tab",
+        || {
+            let (_window, tabs) = open();
+            assert!(!tabs.try_restore());
+            assert_eq!(tabs.tabs.borrow().len(), 1);
+            assert!(saved_session().is_none());
+        },
+    );
+}
+
+#[test]
+fn saved_session_restores_tabs_in_order_with_active_tab() {
+    gtk_test(
+        "ui::window::composition::tabs::tests::saved_session_restores_tabs_in_order_with_active_tab",
+        || {
+            let root = tempfile::tempdir().expect("tab fixture");
+            let first = root.path().join("first");
+            let second = root.path().join("second");
+            let third = root.path().join("third");
+            for directory in [&first, &second, &third] {
+                std::fs::create_dir_all(directory).expect("session directory");
+            }
+            crate::ui::tabs_session::save(
+                &[
+                    Location::local(root.path().join("gone")),
+                    Location::local(&first),
+                    Location::local(&second),
+                    Location::local(&third),
+                ],
+                3,
+            );
+            let (window, tabs) = open();
+            assert!(tabs.try_restore());
+            let expected = vec![
+                Some(Location::local(&first)),
+                Some(Location::local(&second)),
+                Some(Location::local(&third)),
+            ];
+            wait_until(|| tab_locations(&tabs) == expected);
+            assert_eq!(tabs.tabs.borrow().len(), 3);
+            assert_eq!(tabs.active.get(), tabs.tabs.borrow()[2].id);
+            window.destroy();
+        },
+    );
+}
+
+#[test]
+fn tab_changes_persist_for_the_next_launch() {
+    gtk_test(
+        "ui::window::composition::tabs::tests::tab_changes_persist_for_the_next_launch",
+        || {
+            let root = tempfile::tempdir().expect("tab fixture");
+            let alpha = root.path().join("alpha");
+            let beta = root.path().join("beta");
+            for directory in [&alpha, &beta] {
+                std::fs::create_dir_all(directory).expect("session directory");
+            }
+            let app = application();
+            let (first_window, first) = open_in(&app);
+            load(&first.active_browser(), Location::local(&alpha));
+            wait_until(|| {
+                saved_session().is_some_and(|session| session.tabs == vec![Location::local(&alpha)])
+            });
+            let (second_window, second) = open_in(&app);
+            load(&second.active_browser(), Location::local(&beta));
+            wait_until(|| {
+                saved_session().is_some_and(|session| session.tabs == vec![Location::local(&beta)])
+            });
+            let (third_window, third) = open_in(&app);
+            assert!(third.try_restore());
+            wait_until(|| tab_locations(&third) == vec![Some(Location::local(&beta))]);
+            assert_eq!(third.tabs.borrow().len(), 1);
+            first_window.destroy();
+            second_window.destroy();
+            third_window.destroy();
+        },
+    );
+}
+
+#[test]
+fn disabled_restore_ignores_the_saved_session() {
+    gtk_test(
+        "ui::window::composition::tabs::tests::disabled_restore_ignores_the_saved_session",
+        || {
+            let root = tempfile::tempdir().expect("tab fixture");
+            std::fs::create_dir_all(root.path().join("kept")).expect("session directory");
+            let (window, tabs) = open();
+            tabs.preferences.set_restore_tabs(false);
+            crate::ui::tabs_session::save(&[Location::local(root.path().join("kept"))], 0);
+            assert!(!tabs.try_restore());
+            assert_eq!(tabs.tabs.borrow().len(), 1);
+            assert_eq!(tab_locations(&tabs), vec![None]);
+            window.destroy();
+        },
+    );
+}
+
+#[test]
+fn explicit_target_windows_do_not_clobber_the_saved_session() {
+    gtk_test(
+        "ui::window::composition::tabs::tests::explicit_target_windows_do_not_clobber_the_saved_session",
+        || {
+            let root = tempfile::tempdir().expect("tab fixture");
+            let kept = root.path().join("kept");
+            let other = root.path().join("other");
+            for directory in [&kept, &other] {
+                std::fs::create_dir_all(directory).expect("session directory");
+            }
+            crate::ui::tabs_session::save(&[Location::local(&kept)], 0);
+            let (window, tabs) = open_persisting(&application(), false);
+            load(&tabs.active_browser(), Location::local(&other));
+            assert_eq!(
+                saved_session().map(|session| session.tabs),
+                Some(vec![Location::local(&kept)])
+            );
+            assert_eq!(tabs.tabs.borrow().len(), 1);
+            window.destroy();
+        },
+    );
+}
+
+fn open_target_fixture() -> (
+    tempfile::TempDir,
+    gtk::ApplicationWindow,
+    Rc<TabWindow>,
+    Location,
+) {
+    PreferenceManager::seed_saved_preferences_for_test();
+    let root = tempfile::tempdir().expect("open target fixture");
+    let destination = root.path().join("destination");
+    std::fs::create_dir(&destination).expect("destination directory");
+    let (window, tabs) = open();
+    load(&tabs.active_browser(), Location::local(root.path()));
+    let location = Location::local(&destination);
+    (root, window, tabs, location)
+}
+
+#[test]
+fn open_in_new_tab_appends_activates_and_navigates_the_target() {
+    gtk_test(
+        "ui::window::composition::tabs::tests::open_in_new_tab_appends_activates_and_navigates_the_target",
+        || {
+            let (_root, window, tabs, location) = open_target_fixture();
+            let first = tabs.active.get();
+            tabs.open_in_new_tab(location.clone());
+            let opened = tabs.active.get();
+            assert_ne!(opened, first, "the new tab becomes active");
+            assert_eq!(
+                tabs.tabs
+                    .borrow()
+                    .iter()
+                    .map(|tab| tab.id)
+                    .collect::<Vec<_>>(),
+                vec![first, opened],
+                "the new tab is appended last"
+            );
+            let view = tabs.active_browser();
+            wait_until(|| view.browser().active_location().is_some());
+            assert_eq!(view.browser().active_location(), Some(location));
+            window.destroy();
+        },
+    );
+}
+
+#[test]
+fn open_in_new_tab_reuses_the_unavailable_overlay_for_a_missing_target() {
+    gtk_test(
+        "ui::window::composition::tabs::tests::open_in_new_tab_reuses_the_unavailable_overlay_for_a_missing_target",
+        || {
+            PreferenceManager::seed_saved_preferences_for_test();
+            let root = tempfile::tempdir().expect("missing target fixture");
+            let missing = root.path().join("missing");
+            let (window, tabs) = open();
+            load(&tabs.active_browser(), Location::local(root.path()));
+            tabs.open_in_new_tab(Location::local(&missing));
+            let view = tabs.active_browser();
+            wait_until(|| button_with_label(view.overlay().upcast_ref(), "Retry").is_some());
+            assert!(
+                button_with_label(view.overlay().upcast_ref(), "Retry").is_some(),
+                "a missing target shows the retry overlay"
+            );
+            window.destroy();
+        },
+    );
+}
+
+#[test]
+fn open_tab_at_action_reaches_the_new_tab_helper() {
+    gtk_test(
+        "ui::window::composition::tabs::tests::open_tab_at_action_reaches_the_new_tab_helper",
+        || {
+            let (_root, window, tabs, location) = open_target_fixture();
+            let first = tabs.active.get();
+            let value = location_action_value(&location);
+            gio::prelude::ActionGroupExt::activate_action(&window, "open-tab-at", Some(&value));
+            assert_ne!(tabs.active.get(), first);
+            assert_eq!(tabs.tabs.borrow().len(), 2);
+            window.destroy();
+        },
+    );
+}
+
+#[test]
+fn open_in_new_window_presents_a_window_at_the_target() {
+    gtk_test(
+        "ui::window::composition::tabs::tests::open_in_new_window_presents_a_window_at_the_target",
+        || {
+            let (_root, window, tabs, location) = open_target_fixture();
+            let before = gtk::Window::list_toplevels().len();
+            let view = tabs
+                .open_in_new_window(location.clone())
+                .expect("new window browser");
+            assert_eq!(
+                gtk::Window::list_toplevels().len(),
+                before + 1,
+                "a new window is presented"
+            );
+            wait_until(|| view.browser().active_location().is_some());
+            assert_eq!(view.browser().active_location(), Some(location));
+            if let Some(opened) = view.overlay().root().and_downcast::<gtk::Window>() {
+                opened.destroy();
+            }
+            window.destroy();
         },
     );
 }
