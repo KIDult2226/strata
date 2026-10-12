@@ -28,7 +28,6 @@ use gtk::glib;
 use gtk::prelude::*;
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
 use std::rc::{Rc, Weak};
 use std::time::Duration;
 
@@ -438,15 +437,11 @@ impl BrowserView {
         breadcrumb_scrollbar.add_css_class("breadcrumb-scrollbar");
         breadcrumb_scrollbar.set_visible(false);
 
-        let breadcrumb_path = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        breadcrumb_path.append(&breadcrumb_overlay);
-        breadcrumb_path.append(&breadcrumb_scrollbar);
-        breadcrumb_path.set_hexpand(true);
-
         let git_branch_indicator = git_badge::create_git_branch_indicator();
-        let breadcrumb_container = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        let breadcrumb_container = gtk::Box::new(gtk::Orientation::Vertical, 0);
         breadcrumb_container.add_css_class("breadcrumb-container");
-        breadcrumb_container.append(&breadcrumb_path);
+        breadcrumb_container.append(&breadcrumb_overlay);
+        breadcrumb_container.append(&breadcrumb_scrollbar);
         breadcrumb_container.set_hexpand(true);
 
         let motion_controller = gtk::EventControllerMotion::new();
@@ -1930,15 +1925,6 @@ impl BrowserView {
     }
 
     pub fn refresh(&self) {
-        if let Some(path) = self
-            .state
-            .browser
-            .active_location()
-            .and_then(|location| location.native_path().map(Path::to_path_buf))
-        {
-            crate::services::GitService::refresh_path(&path);
-        }
-        git_badge::refresh_all_git_indicators();
         self.state.refresh_browser();
     }
 
@@ -2616,14 +2602,7 @@ impl ViewState {
     }
 
     fn refresh_browser(&self) {
-        if let Some(path) = self
-            .browser
-            .active_location()
-            .and_then(|location| location.native_path().map(Path::to_path_buf))
-        {
-            crate::services::GitService::refresh_path(&path);
-        }
-        git_badge::refresh_all_git_indicators();
+        git_badge::refresh_git_indicators_at(self.browser.active_location().as_ref());
         if self.mode.get() == BrowserMode::Columns {
             self.browser.refresh_all();
         } else {

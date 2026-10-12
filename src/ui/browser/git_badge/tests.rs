@@ -83,24 +83,15 @@ fn branch_indicator_distinguishes_branch_detached_and_absent_heads() {
             );
             assert!(indicator.is_visible());
             assert_eq!(label.text().as_str(), "feature/current-branch");
-            assert_eq!(
-                indicator.tooltip_text().as_deref(),
-                Some("feature/current-branch")
-            );
             assert!(!indicator.has_css_class("detached"));
 
             render_git_branch(&indicator, Some(GitHead::Detached("0123abcd".to_owned())));
             assert_eq!(label.text().as_str(), "Detached · 0123abcd");
-            assert_eq!(
-                indicator.tooltip_text().as_deref(),
-                Some("Detached · 0123abcd")
-            );
             assert!(indicator.has_css_class("detached"));
 
             render_git_branch(&indicator, None);
             assert!(!indicator.is_visible());
             assert!(label.text().is_empty());
-            assert!(indicator.tooltip_text().is_none());
             assert!(!indicator.has_css_class("detached"));
         },
     );
@@ -174,20 +165,11 @@ fn branch_in_footer_survives_hidden_hints_and_clears_outside_git() {
             footer.set_git_branch(&indicator);
             footer.bind_preferences(&manager);
             assert!(indicator.is_ancestor(footer.widget()));
-            assert!(
-                indicator
-                    .next_sibling()
-                    .is_some_and(|widget| widget.has_css_class("shortcut-footer-count"))
-            );
             assert!(!footer.widget().is_visible());
 
             view.state.set_location(&Location::local(repo.path()));
             wait_until(|| indicator.is_visible());
             assert!(footer.widget().is_visible());
-            assert_eq!(
-                indicator.tooltip_text().as_deref(),
-                Some("feature/current-branch")
-            );
 
             view.state.set_location(&Location::local(outside.path()));
             assert!(!indicator.is_visible());

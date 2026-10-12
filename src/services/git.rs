@@ -31,14 +31,6 @@ impl GitStatus {
         }
     }
 
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Modified => "Modified",
-            Self::Untracked => "Untracked",
-            Self::Ignored => "Ignored",
-        }
-    }
-
     pub fn css_class(self) -> &'static str {
         match self {
             Self::Modified => "git-badge-modified",
@@ -55,20 +47,6 @@ pub enum GitHead {
 }
 
 impl GitHead {
-    pub fn display_text(&self) -> String {
-        match self {
-            Self::Branch(branch) => branch.clone(),
-            Self::Detached(commit) => format!("Detached · {commit}"),
-        }
-    }
-
-    pub fn accessible_label(&self) -> String {
-        match self {
-            Self::Branch(branch) => format!("Current Git branch: {branch}"),
-            Self::Detached(commit) => format!("Detached Git HEAD at commit {commit}"),
-        }
-    }
-
     pub fn is_detached(&self) -> bool {
         matches!(self, Self::Detached(_))
     }

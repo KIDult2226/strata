@@ -81,6 +81,34 @@ pub(in crate::ui) fn create_git_branch_indicator() -> gtk::Box {
     indicator
 }
 
+fn status_label(status: GitStatus) -> String {
+    crate::i18n::tr(match status {
+        GitStatus::Modified => "git_status.modified",
+        GitStatus::Untracked => "git_status.untracked",
+        GitStatus::Ignored => "git_status.ignored",
+    })
+}
+
+fn head_text(head: &GitHead) -> String {
+    match head {
+        GitHead::Branch(branch) => branch.clone(),
+        GitHead::Detached(commit) => {
+            rust_i18n::t!("Detached · %{commit}", commit = commit).into_owned()
+        }
+    }
+}
+
+fn head_accessible_label(head: &GitHead) -> String {
+    match head {
+        GitHead::Branch(branch) => {
+            rust_i18n::t!("Current Git branch: %{branch}", branch = branch).into_owned()
+        }
+        GitHead::Detached(commit) => {
+            rust_i18n::t!("Detached Git HEAD at commit %{commit}", commit = commit).into_owned()
+        }
+    }
+}
+
 fn clear_status_badge(badge: &gtk::Label) {
     badge.set_visible(false);
     badge.set_text("");
@@ -99,7 +127,7 @@ fn render_status_badge(badge: &gtk::Label, status: Option<GitStatus>) {
     }
     badge.add_css_class(status.css_class());
     badge.set_text(status.badge_text());
-    crate::ui::accessibility::set_label(badge, status.label());
+    crate::ui::accessibility::set_label(badge, &status_label(status));
     badge.set_visible(true);
 }
 
@@ -159,16 +187,13 @@ fn render_git_branch(indicator: &gtk::Box, head: Option<GitHead>) {
     };
     let Some(head) = head else {
         label.set_text("");
-        indicator.set_tooltip_text(None);
         indicator.remove_css_class("detached");
         indicator.set_visible(false);
         return;
     };
 
-    let display_text = head.display_text();
-    label.set_text(&display_text);
-    indicator.set_tooltip_text(Some(&display_text));
-    crate::ui::accessibility::set_label(&label, &head.accessible_label());
+    label.set_text(&head_text(&head));
+    crate::ui::accessibility::set_label(&label, &head_accessible_label(&head));
     if head.is_detached() {
         indicator.add_css_class("detached");
     } else {
@@ -233,6 +258,13 @@ fn refresh_git_indicators_for_root(root: &Path) {
             apply_git_branch(&indicator, &item.path);
         }
     }
+}
+
+pub(in crate::ui) fn refresh_git_indicators_at(location: Option<&Location>) {
+    if let Some(path) = location.and_then(Location::native_path) {
+        GitService::refresh_path(path);
+    }
+    refresh_all_git_indicators();
 }
 
 pub(in crate::ui) fn refresh_all_git_indicators() {
