@@ -23,7 +23,7 @@ use crate::{
     },
     app::{Browser, BrowserEvent},
     model::Location,
-    services::{BuildKind, ReleaseMetadata, sanitize_uri_credentials},
+    services::sanitize_uri_credentials,
 };
 
 use super::{
@@ -1131,6 +1131,7 @@ pub(super) struct SidebarView {
     update_notice: gtk::Button,
     update_area: gtk::Box,
     update_label: gtk::Label,
+    update_version: gtk::Label,
     handlers: RefCell<Vec<glib::SignalHandlerId>>,
     mount_handler: RefCell<Option<glib::SignalHandlerId>>,
     recent_setting_handler: RefCell<Option<(gtk::Settings, glib::SignalHandlerId)>>,
@@ -1290,8 +1291,14 @@ impl SidebarState {
                 -1,
             );
         }
-        self.update_label.set_visible(!rail);
-        if let Some(content) = self.update_label.parent().and_downcast::<gtk::Box>() {
+        let text = self.update_label.parent();
+        if let Some(text) = &text {
+            text.set_visible(!rail);
+        }
+        if let Some(content) = text
+            .and_then(|text| text.parent())
+            .and_downcast::<gtk::Box>()
+        {
             content.set_spacing(if rail { 0 } else { 8 });
             content.set_halign(if rail {
                 gtk::Align::Center
@@ -3950,24 +3957,6 @@ fn attach_device_actions_menu(
 fn navigate_to_gio_file(browser: &Rc<Browser>, file: &gio::File) {
     if let Some(location) = location_for_file(file) {
         browser.navigate(location);
-    }
-}
-
-/// Put prerelease identity first so ellipsizing a long version cannot hide it.
-///
-/// No channel guard belongs here: `check_for_updates` is already
-/// channel-filtered upstream, so a Stable user's `release` can never carry
-/// a prerelease kind in the first place.
-fn sidebar_update_label(release: &ReleaseMetadata) -> String {
-    if release.kind == BuildKind::Stable {
-        rust_i18n::t!("v%{version} available", version = release.version).into_owned()
-    } else {
-        rust_i18n::t!(
-            "%{kind} · v%{version} available",
-            kind = release.kind.localized_label(),
-            version = release.version,
-        )
-        .into_owned()
     }
 }
 

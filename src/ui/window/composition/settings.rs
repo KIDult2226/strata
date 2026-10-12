@@ -21,7 +21,7 @@ use crate::{
 };
 
 use super::{
-    super::{SidebarView, bind_update_notice_preferences, sidebar_update_label},
+    super::{SidebarView, bind_update_notice_preferences},
     WindowContent,
 };
 
@@ -164,6 +164,7 @@ fn bind_update_notice(
 fn notice_handler(sidebar: &SidebarView, available: AvailableUpdate) -> UpdateNoticeHandler {
     let button = sidebar.update_notice.clone();
     let label = sidebar.update_label.clone();
+    let version = sidebar.update_version.clone();
     let area = sidebar.update_area.clone();
     Rc::new(move |release| {
         if let Some((release, install, update_method)) = release {
@@ -171,7 +172,8 @@ fn notice_handler(sidebar: &SidebarView, available: AvailableUpdate) -> UpdateNo
                 &button,
                 Some(&update_tooltip(&release, update_method)),
             );
-            label.set_text(&sidebar_update_label(&release));
+            label.set_text(&crate::i18n::tr("Update available"));
+            version.set_text(&format!("v{}", release.version));
             if release.kind == BuildKind::Stable {
                 button.remove_css_class("preview");
             } else {

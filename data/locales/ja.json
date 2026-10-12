@@ -1063,6 +1063,7 @@
   "Unsupported image format": "対応していない画像形式です",
   "Unsupported source dimensions": "対応していないソースのサイズです",
   "Until logout": "ログアウトまで",
+  "Update available": "更新があります",
   "Updates": "更新",
   "Use Strata": "Strata を使用",
   "Use Strata for Open and Save dialogs, opening folders, and Reveal in File Manager. On Omarchy, this also sets file-manager keyboard shortcuts. Close open file dialogs before changing setup.": "「開く」「保存」ダイアログ、フォルダーを開く操作、「ファイルマネージャーで表示」に Strata を使用します。Omarchy ではファイルマネージャーのキーボードショートカットも設定します。変更前に開いているファイルダイアログを閉じてください。",
