@@ -15,7 +15,7 @@ use crate::{
     model::Location,
     services::{
         ArchiveFormat, CompressRequest, ExtractRequest, LoadHandle, OperationEvent,
-        OperationProvider, OperationRequestId, TransferConflict,
+        OperationProvider, OperationRequestId, PasswordFailure, TransferConflict,
     },
     test_support::ASYNC_MAIN_CONTEXT_DEFAULT,
 };
@@ -454,6 +454,25 @@ fn copy_with_big_buf_stops_when_cancelled() {
 }
 
 #[test]
+fn copy_with_big_buf_reports_os_write_failures_without_the_errno() {
+    struct FullDisk;
+    impl std::io::Write for FullDisk {
+        fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+            Err(std::io::Error::from_raw_os_error(libc::EFBIG))
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let error = copy_with_big_buf(&b"payload"[..], &mut FullDisk, &AtomicBool::new(false))
+        .expect_err("failed write must stop the copy");
+    assert_eq!(
+        error,
+        ArchiveError::Failed("The file is too large for this file system".to_owned())
+    );
+}
+
+#[test]
 fn cancelling_extraction_from_started_waits_for_the_worker_and_reports_pending_output()
 -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
@@ -573,10 +592,10 @@ fn extraction_failures_stop_progress_and_preserve_error_distinctions() -> Result
         ),
         ("missing.zip", "No such file"),
         ("unreadable.zip", "Permission denied"),
-        ("destination.zip", "Not a directory"),
+        ("destination.zip", "Not a folder"),
         ("unknown.iso", "Unsupported archive format"),
-        ("folder.zip", "Not an archive: `folder.zip`"),
-        ("passwords.zip", "Not an archive: `passwords.zip`"),
+        ("folder.zip", "Not an archive: “folder.zip”"),
+        ("passwords.zip", "Not an archive: “passwords.zip”"),
     ] {
         let archive = root.path().join(name);
         if matches!(name, "folder.zip" | "passwords.zip") {
@@ -622,7 +641,7 @@ fn extraction_failures_stop_progress_and_preserve_error_distinctions() -> Result
             std::thread::yield_now();
         }
         assert!(
-            matches!(events.borrow().last(), Some(OperationEvent::Failed { message, .. }) if message.contains(expected)),
+            matches!(events.borrow().last(), Some(OperationEvent::Failed { message, password_failure: None, .. }) if message.contains(expected)),
             "{name}: {:?}",
             events.borrow()
         );
@@ -908,7 +927,7 @@ fn failed_multi_root_extraction_keeps_partial_output_in_the_archive_folder()
         assert_eq!(
             *message,
             format!(
-                "Refusing unsafe archive path: {unsafe_member}. Extracted entries remain in `{stem}`."
+                "Refusing unsafe archive path: {unsafe_member}. Extracted entries remain in “{stem}”."
             ),
             "{name}"
         );
@@ -995,6 +1014,38 @@ fn single_root_extraction_lands_verbatim() -> Result<(), Box<dyn Error>> {
     assert_eq!(fs::read(destination.join("readme (2).txt"))?, b"hi");
     assert!(!destination.join("note").exists());
     assert_eq!(destination.read_dir()?.count(), 3);
+    Ok(())
+}
+
+#[test]
+fn extraction_reports_published_locations_for_undo() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let destination = root.path().join("destination");
+    fs::create_dir(&destination)?;
+    fs::write(destination.join("readme.txt"), b"original")?;
+
+    let archive = root.path().join("note.zip");
+    write_zip_stored(&archive, &[("readme.txt", b"extracted")])?;
+    let events = run_extraction(ExtractRequest {
+        id: OperationRequestId(7),
+        entry: test_file_entry(&archive),
+        destination: Location::local(&destination),
+        created_destination: false,
+        password: None,
+    });
+
+    let Some(OperationEvent::Extracted { created, .. }) = events.last() else {
+        panic!("expected extraction, got {events:?}");
+    };
+    assert_eq!(
+        created.as_slice(),
+        &[Location::local(destination.join("readme (2).txt"))],
+        "undo must target the published rename, not the pre-existing file"
+    );
+    assert_eq!(fs::read(destination.join("readme.txt"))?, b"original");
     Ok(())
 }
 
@@ -1101,17 +1152,67 @@ fn gzip_trailer_failure_is_reported_through_the_provider() -> Result<(), Box<dyn
         password: None,
     });
 
-    let Some(OperationEvent::Failed { message, .. }) = events.last() else {
+    let Some(OperationEvent::Failed {
+        message,
+        password_failure: None,
+        ..
+    }) = events.last()
+    else {
         panic!("a damaged gzip trailer was accepted: {events:?}");
     };
     assert_eq!(
         *message,
-        format!("{INVALID_ARCHIVE} Extracted entries remain in `content`.")
+        format!("{INVALID_ARCHIVE} Extracted entries remain in “content”.")
     );
     assert_eq!(entry_names(destination.path())?, ["content"]);
     assert_eq!(
         fs::metadata(destination.path().join("content/a.txt"))?.len(),
         50_000
     );
+    Ok(())
+}
+
+#[test]
+fn password_failures_reach_the_event_as_their_kind_and_leave_nothing_behind()
+-> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    for format in [ArchiveFormat::Zip, ArchiveFormat::SevenZ] {
+        let root = tempfile::tempdir()?;
+        let sources = ["first.txt", "second.txt"].map(|name| root.path().join(name));
+        for source in &sources {
+            fs::write(source, b"contents")?;
+        }
+        let archive = root.path().join(format!("secret.{}", format.extension()));
+        super::write_compression_fixture(&archive, &sources, format, Some("test-password"))?;
+        for (password, expected) in [
+            (None, PasswordFailure::Required),
+            (Some("wrong-password"), PasswordFailure::Incorrect),
+        ] {
+            let destination = tempfile::tempdir()?;
+
+            let events = run_extraction(ExtractRequest {
+                id: OperationRequestId(8),
+                entry: test_file_entry(&archive),
+                destination: Location::local(destination.path()),
+                created_destination: false,
+                password: password.map(str::to_owned),
+            });
+
+            assert!(
+                matches!(
+                    events.last(),
+                    Some(OperationEvent::Failed { message, password_failure: Some(kind), .. })
+                        if *kind == expected && !message.contains("remain")
+                ),
+                "{format:?} {password:?}: {events:?}"
+            );
+            assert!(
+                entry_names(destination.path())?.is_empty(),
+                "{format:?} {password:?}"
+            );
+        }
+    }
     Ok(())
 }

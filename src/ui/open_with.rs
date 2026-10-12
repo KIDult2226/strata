@@ -13,6 +13,10 @@ use super::{
     blur::BlurBin,
     browser::{dismiss_modal_layer, modal_layer, show_error_dialog},
     controls::modal_layout,
+    keys::{
+        self, SHORTCUT_MODIFIERS,
+        bindings::{BACKSPACE, DOWN, ESCAPE_ANY, FOCUS_NEXT, FOCUS_PREVIOUS, UP},
+    },
     recent_apps,
 };
 
@@ -383,7 +387,7 @@ fn launch_with_recent_registration(
     if !launcher.supports_uris() && requires_uri_handlers(files) {
         return Err(glib::Error::new(
             gio::IOErrorEnum::NotSupported,
-            "This application cannot open files at this location",
+            &crate::i18n::tr("This application cannot open files at this location"),
         ));
     }
     launcher.launch(files, context)?;
@@ -464,14 +468,9 @@ fn install_list_tab_navigation(
     let always = always_use.downgrade();
     let close = close.downgrade();
     let cancel = cancel.downgrade();
-    keys.connect_key_pressed(move |_, key, _, modifiers| {
-        if !matches!(key, gtk::gdk::Key::Tab | gtk::gdk::Key::ISO_Left_Tab)
-            || modifiers.intersects(
-                gtk::gdk::ModifierType::CONTROL_MASK
-                    | gtk::gdk::ModifierType::ALT_MASK
-                    | gtk::gdk::ModifierType::SUPER_MASK,
-            )
-        {
+    keys::on_press(&keys, move |_, press| {
+        let backward = press.is(FOCUS_PREVIOUS);
+        if !backward && !press.is(FOCUS_NEXT) {
             return glib::Propagation::Proceed;
         }
         let (Some(search), Some(list), Some(always), Some(close), Some(cancel)) = (
@@ -486,8 +485,6 @@ fn install_list_tab_navigation(
         let Some(focus) = list.root().and_then(|root| root.focus()) else {
             return glib::Propagation::Proceed;
         };
-        let backward = key == gtk::gdk::Key::ISO_Left_Tab
-            || modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK);
         let focus_selected_row = || {
             if list.is_visible() {
                 list.selected_row().is_some_and(|row| row.grab_focus())
@@ -580,7 +577,7 @@ fn create_section_header(title: &str) -> gtk::ListBoxRow {
     row.set_focusable(false);
     row.set_can_focus(false);
 
-    let label = gtk::Label::new(Some(title));
+    let label = gtk::Label::new(Some(&crate::i18n::tr(title)));
     label.add_css_class("open-with-heading");
     label.set_xalign(0.0);
     row.set_child(Some(&label));
@@ -644,16 +641,16 @@ pub(super) fn show(
         root.set_blurred(true);
     }
 
-    let subtitle = if files.len() == 1 {
+    let subtitle = crate::i18n::tr(if files.len() == 1 {
         "Choose an application to open this item"
     } else {
         "Choose an application to open these items"
-    };
+    });
     let layout = modal_layout(
         crate::assets::icons::EXTERNAL_LINK,
-        "Open With",
-        subtitle,
-        "Open",
+        &crate::i18n::tr("Open With"),
+        &subtitle,
+        &crate::i18n::tr("Open"),
     );
     layout.content.add_css_class("open-with-dialog");
     layout.content.set_size_request(480, 460);
@@ -661,20 +658,23 @@ pub(super) fn show(
 
     let search_entry = gtk::SearchEntry::new();
     search_entry.add_css_class("open-with-search");
-    search_entry.set_placeholder_text(Some("Search applications…"));
+    search_entry.set_placeholder_text(Some(&crate::i18n::tr("Search applications…")));
     layout.body.append(&search_entry);
 
     let list = gtk::ListBox::new();
     list.add_css_class("open-with-list");
     list.set_selection_mode(gtk::SelectionMode::Single);
     list.set_activate_on_single_click(false);
-    list.update_property(&[gtk::accessible::Property::Label("Applications")]);
+    list.update_property(&[gtk::accessible::Property::Label(&crate::i18n::tr(
+        "Applications",
+    ))]);
 
-    let always_use = super::controls::form_check_button(if content_types.len() > 1 {
-        "Always use for these file types"
-    } else {
-        "Always use for this file type"
-    });
+    let always_use =
+        super::controls::form_check_button(&crate::i18n::tr(if content_types.len() > 1 {
+            "Always use for these file types"
+        } else {
+            "Always use for this file type"
+        }));
     always_use.set_visible(false);
     layout.actions.prepend(&always_use);
 
@@ -784,7 +784,9 @@ pub(super) fn show(
     list_scroll.set_hscrollbar_policy(gtk::PolicyType::Never);
     layout.body.append(&list_scroll);
 
-    let empty_search = gtk::Label::new(Some("No matching applications were found."));
+    let empty_search = gtk::Label::new(Some(&crate::i18n::tr(
+        "No matching applications were found.",
+    )));
     empty_search.add_css_class("open-with-empty");
     empty_search.set_wrap(true);
     empty_search.set_xalign(0.5);
@@ -799,7 +801,7 @@ pub(super) fn show(
     if !has_apps {
         search_entry.set_visible(false);
         list_scroll.set_visible(false);
-        let empty = gtk::Label::new(Some(context.empty_message()));
+        let empty = gtk::Label::new(Some(&crate::i18n::tr(context.empty_message())));
         empty.add_css_class("open-with-empty");
         empty.set_wrap(true);
         empty.set_xalign(0.5);
@@ -814,22 +816,16 @@ pub(super) fn show(
     search_keys.set_propagation_phase(gtk::PropagationPhase::Capture);
     let list_for_search = list.downgrade();
     let scroll_for_search = list_scroll.downgrade();
-    search_keys.connect_key_pressed(move |_, key, _, modifiers| {
-        if !matches!(key, gtk::gdk::Key::Down | gtk::gdk::Key::Up)
-            || modifiers.intersects(
-                gtk::gdk::ModifierType::CONTROL_MASK
-                    | gtk::gdk::ModifierType::ALT_MASK
-                    | gtk::gdk::ModifierType::SUPER_MASK
-                    | gtk::gdk::ModifierType::SHIFT_MASK,
-            )
-        {
+    keys::on_press(&search_keys, move |_, press| {
+        let down = press.is(DOWN);
+        if !down && !press.is(UP) {
             return glib::Propagation::Proceed;
         }
         if let (Some(list), Some(scroll)) = (list_for_search.upgrade(), scroll_for_search.upgrade())
             && let Some(selected) = list.selected_row()
         {
             let mut row = selected.clone();
-            let mut sibling = if key == gtk::gdk::Key::Down {
+            let mut sibling = if down {
                 selected.next_sibling()
             } else {
                 selected.prev_sibling()
@@ -842,7 +838,7 @@ pub(super) fn show(
                     row = candidate_row.clone();
                     break;
                 }
-                sibling = if key == gtk::gdk::Key::Down {
+                sibling = if down {
                     candidate.next_sibling()
                 } else {
                     candidate.prev_sibling()
@@ -867,12 +863,12 @@ pub(super) fn show(
     let list_keys = gtk::EventControllerKey::new();
     let search_for_list = search_entry.downgrade();
     let list_weak = list.downgrade();
-    list_keys.connect_key_pressed(move |_, key, _, modifiers| {
+    keys::on_press(&list_keys, move |_, press| {
         let (Some(list), Some(search)) = (list_weak.upgrade(), search_for_list.upgrade()) else {
             return glib::Propagation::Proceed;
         };
 
-        if key == gtk::gdk::Key::Up
+        if press.is(UP.ignoring(SHORTCUT_MODIFIERS))
             && let Some(selected) = list.selected_row()
         {
             let mut prev = selected.prev_sibling();
@@ -890,13 +886,8 @@ pub(super) fn show(
             }
         }
 
-        let has_command_modifiers = modifiers.intersects(
-            gtk::gdk::ModifierType::CONTROL_MASK
-                | gtk::gdk::ModifierType::ALT_MASK
-                | gtk::gdk::ModifierType::SUPER_MASK,
-        );
-        if !has_command_modifiers && search.is_visible() {
-            if key == gtk::gdk::Key::BackSpace {
+        if search.is_visible() {
+            if press.is(BACKSPACE.ignoring(gtk::gdk::ModifierType::SHIFT_MASK)) {
                 search.grab_focus();
                 let mut text = search.text().to_string();
                 text.pop();
@@ -904,7 +895,7 @@ pub(super) fn show(
                 search.set_position(-1);
                 return glib::Propagation::Stop;
             }
-            if let Some(ch) = key.to_unicode().filter(|c| !c.is_control()) {
+            if let Some(ch) = press.text() {
                 search.grab_focus();
                 let mut text = search.text().to_string();
                 text.push(ch);
@@ -1057,7 +1048,7 @@ pub(super) fn show(
             let open_parent = open_parent.clone();
             glib::timeout_add_local_once(Duration::from_millis(250), move || {
                 if let Some(parent) = open_parent.upgrade() {
-                    show_error_dialog(&parent, "Unable to open file", &detail);
+                    show_error_dialog(&parent, &crate::i18n::tr("Unable to open file"), &detail);
                 }
             });
             return;
@@ -1075,8 +1066,8 @@ pub(super) fn show(
     let escape_search = search_entry.downgrade();
     let escape = gtk::EventControllerKey::new();
     escape.set_propagation_phase(gtk::PropagationPhase::Capture);
-    escape.connect_key_pressed(move |_, key, _, _| {
-        if key == gtk::gdk::Key::Escape {
+    keys::on_press(&escape, move |_, press| {
+        if press.is(ESCAPE_ANY) {
             if let Some(search) = escape_search.upgrade()
                 && !search.text().is_empty()
             {

@@ -323,7 +323,7 @@ fn read_failure_removes_partial_output_without_reporting_cancellation() -> Resul
     assert!(matches!(
         session.finish(result, || panic!("failure must not enumerate remaining members")),
         Err(ArchiveError::Failed(message))
-            if message == "broken stream. Extracted entries remain in `archive`."
+            if message == "broken stream. Extracted entries remain in “archive”."
     ));
     assert_eq!(progress.load(Ordering::Relaxed), 1);
     assert_eq!(fs::read(root.path().join("archive/done.txt"))?, b"done");
@@ -500,7 +500,7 @@ fn declared_size_overflow_removes_partial_output() -> Result<(), Box<dyn Error>>
 
     assert_eq!(
         message,
-        "Archive member `overflow.txt` declared 4 bytes but produced more"
+        "Archive member “overflow.txt” declared 4 bytes but produced more"
     );
     assert!(root.path().read_dir()?.next().is_none());
     assert_eq!(progress.load(Ordering::Relaxed), 0);
@@ -523,7 +523,7 @@ fn declared_size_shortfall_removes_partial_output() -> Result<(), Box<dyn Error>
 
     assert_eq!(
         message,
-        "Archive member `short.txt` declared 8 bytes but produced 4 bytes"
+        "Archive member “short.txt” declared 8 bytes but produced 4 bytes"
     );
     assert!(root.path().read_dir()?.next().is_none());
     assert_eq!(progress.load(Ordering::Relaxed), 0);
@@ -552,7 +552,7 @@ fn member_preflight_refuses_when_destination_lacks_space() -> Result<(), Box<dyn
     let message = failed_extract(session, result);
 
     assert!(
-        message.contains("declared 8 bytes, but only 4 bytes are free"),
+        message.contains("declared 8 B, but only 4 B is free"),
         "{message}"
     );
     assert!(!message.contains("remain in"), "{message}");
@@ -583,7 +583,7 @@ fn copy_without_declared_size_stops_at_free_space() -> Result<(), Box<dyn Error>
 
     assert_eq!(
         message,
-        "Not enough free space at the destination to extract `payload.txt` (4 bytes available)"
+        "Not enough free space at the destination to extract “payload.txt” (4 B available)"
     );
     assert!(root.path().read_dir()?.next().is_none());
     assert_eq!(progress.load(Ordering::Relaxed), 0);
@@ -607,7 +607,9 @@ fn claimed_total_preflight_refuses_before_any_member() -> Result<(), Box<dyn Err
     let message = failed_extract(session, result);
 
     assert!(
-        message.contains("Archive declared size (100 bytes) exceeds the 10 bytes of free space"),
+        message.contains(
+            "Archive declared size (100 B) exceeds the free space at the destination (10 B)"
+        ),
         "{message}"
     );
     assert!(!message.contains("remain in"), "{message}");
@@ -643,11 +645,11 @@ fn second_member_preflight_uses_remaining_space() -> Result<(), Box<dyn Error>> 
     let message = failed_extract(session, result);
 
     assert!(
-        message.contains("declared 4 bytes, but only 2 bytes are free"),
+        message.contains("declared 4 B, but only 2 B is free"),
         "{message}"
     );
     assert!(
-        message.ends_with("free at the destination. Extracted entries remain in `archive`."),
+        message.ends_with("free at the destination. Extracted entries remain in “archive”."),
         "{message}"
     );
     assert_eq!(
@@ -789,13 +791,13 @@ fn finish_publishes_every_outcome_shape() -> Result<(), Box<dyn Error>> {
         (
             &["a.txt"],
             Err(ArchiveError::Failed("boom".to_owned())),
-            Expected::Failed("boom. Extracted entries remain in `archive`."),
+            Expected::Failed("boom. Extracted entries remain in “archive”."),
             &["archive/a.txt"],
         ),
         (
             &["a.txt"],
             Err(ArchiveError::Failed("Damaged.".to_owned())),
-            Expected::Failed("Damaged. Extracted entries remain in `archive`."),
+            Expected::Failed("Damaged. Extracted entries remain in “archive”."),
             &["archive/a.txt"],
         ),
         (
@@ -1006,7 +1008,7 @@ fn links_consume_no_space_and_hard_links_follow_renamed_targets() -> Result<(), 
 fn refused_link_members_leave_no_staging_behind() -> Result<(), Box<dyn Error>> {
     let too_long = [b'a'; 4096];
     for (index, expected) in [
-        "is a hard link to `later.txt`, which was not extracted",
+        "is a hard link to “later.txt”, which was not extracted",
         "has an invalid symbolic link target",
         "has an invalid symbolic link target",
         "has an invalid symbolic link target",
@@ -1030,7 +1032,7 @@ fn refused_link_members_leave_no_staging_behind() -> Result<(), Box<dyn Error>> 
 
         assert!(root.path().read_dir()?.next().is_none(), "case {index}");
         let message = failed_extract(session, result);
-        assert_eq!(message, format!("Archive member `link` {expected}"));
+        assert_eq!(message, format!("Archive member “link” {expected}"));
         assert!(root.path().read_dir()?.next().is_none(), "case {index}");
         assert_eq!(progress.load(Ordering::Relaxed), 0);
     }
@@ -1122,10 +1124,117 @@ fn a_failed_directory_restore_leaves_restored_directories_writable() -> Result<(
     assert_eq!(
         message,
         format!(
-            "Could not restore the modification time of `top/ro`: {}",
-            rustix::io::Errno::IO
+            "Could not restore the modification time of “top/ro”: {}",
+            crate::services::io_error_message(&rustix::io::Errno::IO.into())
         )
     );
     assert!(root.path().read_dir()?.next().is_none());
+    Ok(())
+}
+
+#[test]
+fn a_repeated_directory_member_merges_its_stored_metadata() -> Result<(), Box<dyn Error>> {
+    let earlier_time = UNIX_EPOCH + Duration::from_secs(1_000_000_000);
+    let later_time = UNIX_EPOCH + Duration::from_secs(1_100_000_000);
+    let unreadable = MemberMetadata {
+        mode: Some(0o000),
+        modified: None,
+    };
+    let full = |modified| MemberMetadata {
+        mode: Some(0o750),
+        modified: Some(modified),
+    };
+    let time_only = MemberMetadata {
+        mode: None,
+        modified: Some(later_time),
+    };
+    // A top-level directory is restored after publication, a nested one in staging.
+    for (directory, published, earlier, later, mtime) in [
+        ("dir", "dir", unreadable, full(earlier_time), earlier_time),
+        (
+            "top/dir",
+            "top",
+            unreadable,
+            full(earlier_time),
+            earlier_time,
+        ),
+        (
+            "dir",
+            "dir",
+            full(earlier_time),
+            MemberMetadata::NONE,
+            earlier_time,
+        ),
+        ("dir", "dir", full(earlier_time), time_only, later_time),
+    ] {
+        let label = format!("{directory}: {earlier:?} then {later:?}");
+        let root = tempfile::tempdir()?;
+        let progress = AtomicUsize::new(0);
+        let cancelled = AtomicBool::new(false);
+        let mut session = ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled)?;
+        session.extract_member(directory, MemberContent::Directory, earlier)?;
+        session.extract_member(
+            format!("{directory}/file.txt"),
+            MemberContent::File(&mut &b"file"[..], Some(4)),
+            MemberMetadata::NONE,
+        )?;
+        session.extract_member(directory, MemberContent::Directory, later)?;
+
+        let outcome = session.finish(Ok(()), Vec::new);
+
+        assert!(
+            matches!(&outcome, Ok(ArchiveOutcome::Completed(Some(name))) if name == published),
+            "{label}: {outcome:?}"
+        );
+        let output = root.path().join(directory);
+        let metadata = fs::metadata(&output)?;
+        assert_eq!(
+            metadata.permissions().mode() & 0o7777,
+            expected_mode(0o750),
+            "{label}"
+        );
+        assert_eq!(metadata.modified()?, mtime, "{label}");
+        assert_eq!(fs::read(output.join("file.txt"))?, b"file", "{label}");
+    }
+    Ok(())
+}
+
+#[test]
+fn a_password_failure_that_cannot_discard_its_output_offers_no_retry() -> Result<(), Box<dyn Error>>
+{
+    let root = tempfile::tempdir()?;
+    let progress = AtomicUsize::new(0);
+    let cancelled = AtomicBool::new(false);
+    let mut session = ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled)?;
+    session.extract_member(
+        "locked/file.txt",
+        MemberContent::File(&mut &b"file"[..], Some(4)),
+        MemberMetadata::NONE,
+    )?;
+    let staging = fs::read_dir(root.path())?
+        .next()
+        .ok_or("no staging folder")??
+        .path();
+    fs::set_permissions(staging.join("locked"), fs::Permissions::from_mode(0o500))?;
+
+    let outcome = session.finish(
+        Err(ArchiveError::PasswordRequired(
+            crate::adapters::PASSWORD_REQUIRED.to_owned(),
+        )),
+        Vec::new,
+    );
+
+    let kept = root.path().join("archive/locked");
+    let _ = fs::set_permissions(&kept, fs::Permissions::from_mode(0o700));
+    let _ = fs::set_permissions(staging.join("locked"), fs::Permissions::from_mode(0o700));
+    assert!(
+        matches!(&outcome, Err(ArchiveError::Failed(message))
+            if message.starts_with(&format!(
+                "{} Could not remove the extraction staging folder: Permission denied",
+                crate::adapters::PASSWORD_REQUIRED
+            )) && message.ends_with(" Extracted entries remain in “archive”.")),
+        "{outcome:?}"
+    );
+    assert_eq!(fs::read(kept.join("file.txt"))?, b"file");
     Ok(())
 }

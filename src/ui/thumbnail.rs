@@ -399,6 +399,7 @@ pub(super) fn set_thumbnail_or_icon(
     icon_size: i32,
     thumbnail_size: i32,
 ) {
+    super::file_providers::bind(image, entry.location.native_path());
     let Some(path) = entry.local_thumbnail_path() else {
         if entry.location.backend_name() == "gphoto2"
             && !entry.is_directory()
@@ -464,6 +465,7 @@ pub(super) fn set_thumbnail_or_icon_for_path(
     icon_size: i32,
     thumbnail_size: i32,
 ) {
+    super::file_providers::bind(image, Some(path));
     set_thumbnail_for_path(ThumbnailRequest {
         image,
         path,
@@ -1457,6 +1459,11 @@ fn register_tracked_icon(image: &ThumbnailSlot, path: &Path, icon: &str, customi
 pub(super) fn refresh_customized_icons(paths: &[PathBuf]) {
     refresh_tracked_icons(|tracked| paths.iter().any(|candidate| candidate == &tracked.path));
     refresh_tracked_images(|path| paths.iter().any(|candidate| candidate == path));
+}
+
+pub(super) fn refresh_customized_icons_within(roots: &[PathBuf]) {
+    refresh_tracked_icons(|tracked| roots.iter().any(|root| tracked.path.starts_with(root)));
+    refresh_tracked_images(|path| roots.iter().any(|root| path.starts_with(root)));
 }
 
 pub(super) fn refresh_all_customized_icons() {

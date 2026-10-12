@@ -95,12 +95,21 @@ fn label(class: &str) -> gtk::Label {
     label
 }
 
-fn transport_button(icon: &str, name: &str, tooltip: &str) -> gtk::Button {
+/// `tooltip` names `binding` with `%{keys}`.
+fn transport_button(
+    icon: &str,
+    name: &str,
+    tooltip: &str,
+    binding: crate::ui::keys::Binding,
+) -> gtk::Button {
     let button = gtk::Button::new();
     button.add_css_class("preview-media-button");
     button.set_child(Some(&crate::assets::primary_icon(icon, 18)));
-    button.set_tooltip_text(Some(tooltip));
-    crate::ui::accessibility::set_label(&button, name);
+    button.set_tooltip_text(Some(&crate::ui::shortcut_reference::with_keys(
+        tooltip,
+        crate::ui::keys::Keys::One(binding),
+    )));
+    crate::ui::accessibility::set_label(&button, &crate::i18n::tr(name));
     button
 }
 
@@ -131,7 +140,7 @@ impl VideoView {
         frame.add_overlay(&picture);
         frame.set_focusable(true);
         frame.set_can_target(true);
-        crate::ui::accessibility::set_label(&frame, "Video frame");
+        crate::ui::accessibility::set_label(&frame, &crate::i18n::tr("Video frame"));
         let placeholder = frame::Placeholder::new();
         frame.add_overlay(&placeholder);
         let bubble_cell = gtk::Picture::new();
@@ -178,20 +187,25 @@ impl VideoView {
         let previous = transport_button(
             crate::assets::icons::SKIP_BACK,
             "Previous video",
-            "Previous video (Ctrl+Alt+<)",
+            "Previous video (%{keys})",
+            crate::ui::keys::bindings::MEDIA_PREVIOUS,
         );
         let next = transport_button(
             crate::assets::icons::SKIP_FORWARD,
             "Next video",
-            "Next video (Ctrl+Alt+>)",
+            "Next video (%{keys})",
+            crate::ui::keys::bindings::MEDIA_NEXT,
         );
         let play_icon = crate::assets::primary_icon(crate::assets::icons::PLAY, 22);
         let play = gtk::Button::new();
         play.add_css_class("preview-media-center");
         play.add_css_class("preview-video-play");
         play.set_child(Some(&play_icon));
-        play.set_tooltip_text(Some("Play/Pause (Ctrl+Alt+Space)"));
-        crate::ui::accessibility::set_label(&play, "Play or pause");
+        play.set_tooltip_text(Some(&crate::ui::shortcut_reference::with_keys(
+            "Play/Pause (%{keys})",
+            crate::ui::keys::Keys::One(crate::ui::keys::bindings::MEDIA_PLAY_PAUSE),
+        )));
+        crate::ui::accessibility::set_label(&play, &crate::i18n::tr("Play or pause"));
         let buttons = gtk::Box::new(gtk::Orientation::Horizontal, 10);
         buttons.set_valign(gtk::Align::Center);
         buttons.append(&previous);

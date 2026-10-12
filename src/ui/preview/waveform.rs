@@ -5,13 +5,19 @@ use std::{
     rc::Rc,
 };
 
-use gtk::{gdk, glib, graphene, prelude::*, subclass::prelude::*};
+use gtk::{glib, graphene, prelude::*, subclass::prelude::*};
 
 use crate::{
     media::peaks::{BUCKETS, rms},
-    ui::preview::audio::{
-        clock,
-        palette::{follow_theme, palette, with_alpha},
+    ui::{
+        keys,
+        preview::{
+            audio::{
+                clock,
+                palette::{follow_theme, palette, with_alpha},
+            },
+            keyboard::{MediaCommand, MediaSeek, seek_or_volume, step_preview_volume},
+        },
     },
 };
 
@@ -23,7 +29,6 @@ const MIN_LOUDEST: f32 = 0.04;
 const GROW_RATE: f32 = 9.0;
 const SETTLED: f32 = 0.002;
 const CHAPTER_TICK: f32 = 6.0;
-const KEY_SEEK_US: i64 = 5_000_000;
 
 type PreviewCallback = Rc<dyn Fn(Option<i64>)>;
 
@@ -100,7 +105,9 @@ impl Waveform {
         waveform.add_css_class("preview-waveform");
         waveform.set_focusable(true);
         waveform.set_cursor_from_name(Some("pointer"));
-        waveform.update_property(&[gtk::accessible::Property::Label("Playback position")]);
+        waveform.update_property(&[gtk::accessible::Property::Label(&crate::i18n::tr(
+            "Playback position",
+        ))]);
         waveform.imp().targets.replace(vec![0.0; BUCKETS as usize]);
         waveform.imp().shown.replace(vec![0.0; BUCKETS as usize]);
         follow_theme(&waveform);
@@ -231,10 +238,10 @@ impl Waveform {
                 gtk::accessible::Property::ValueMin(0.0),
                 gtk::accessible::Property::ValueMax((duration.max(0) / 1_000_000) as f64),
                 gtk::accessible::Property::ValueNow(second as f64),
-                gtk::accessible::Property::ValueText(&format!(
-                    "{} of {}",
-                    clock(timestamp),
-                    clock(duration)
+                gtk::accessible::Property::ValueText(&rust_i18n::t!(
+                    "%{elapsed} of %{duration}",
+                    elapsed = clock(timestamp),
+                    duration = clock(duration)
                 )),
             ]);
         }
@@ -260,6 +267,16 @@ impl Waveform {
         if let Some(media) = media.filter(|media| media.is_seekable()) {
             media.seek(target.clamp(0, media.duration().max(0)));
         }
+    }
+
+    fn seek_by_key(&self, seek: MediaSeek) {
+        let timestamp = self
+            .imp()
+            .media
+            .borrow()
+            .as_ref()
+            .map_or(0, |media| media.timestamp());
+        self.seek_to(seek.target(timestamp, self.duration()));
     }
 
     fn install_input(&self) {
@@ -333,30 +350,27 @@ impl Waveform {
         self.add_controller(motion);
 
         let keys = gtk::EventControllerKey::new();
-        keys.connect_key_pressed(glib::clone!(
-            #[weak(rename_to = waveform)]
-            self,
-            #[upgrade_or]
-            glib::Propagation::Proceed,
-            move |_, key, _, modifiers| {
-                let delta = match key {
-                    gdk::Key::Left | gdk::Key::KP_Left => -KEY_SEEK_US,
-                    gdk::Key::Right | gdk::Key::KP_Right => KEY_SEEK_US,
-                    _ => return glib::Propagation::Proceed,
-                };
-                if !modifiers.is_empty() {
-                    return glib::Propagation::Proceed;
+        keys::on_press(
+            &keys,
+            glib::clone!(
+                #[weak(rename_to = waveform)]
+                self,
+                #[upgrade_or]
+                glib::Propagation::Proceed,
+                move |_, press| {
+                    match seek_or_volume(press) {
+                        Some(MediaCommand::Seek(seek)) => waveform.seek_by_key(seek),
+                        Some(command) => {
+                            if let Some(delta) = command.volume_delta() {
+                                step_preview_volume(delta);
+                            }
+                        }
+                        None => return glib::Propagation::Proceed,
+                    }
+                    glib::Propagation::Stop
                 }
-                let timestamp = waveform
-                    .imp()
-                    .media
-                    .borrow()
-                    .as_ref()
-                    .map_or(0, |media| media.timestamp());
-                waveform.seek_to(timestamp + delta);
-                glib::Propagation::Stop
-            }
-        ));
+            ),
+        );
         self.add_controller(keys);
     }
 

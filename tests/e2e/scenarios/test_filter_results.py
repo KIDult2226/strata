@@ -6,6 +6,7 @@ import pytest
 from PIL import Image, ImageColor
 
 from harness.fixtures import FixtureTree
+from harness.keyboard_layout import PINYIN
 from harness.modes import ALL_MODES
 
 
@@ -354,6 +355,21 @@ def test_filtered_item_menu_actions_use_the_real_location(strata, mode, trigger,
     assert strata.fixture.path("alpha/match-note.txt").read_text() == "alpha source\n"
 
 
+def test_space_completes_a_composition_instead_of_previewing_the_selected_result(
+    strata, keyboard_layout
+):
+    field = filter_results(strata)
+    row = strata.wait(lambda: result(strata, "beta/match-note.txt"), "the beta result")
+    strata.pointer.click(row, modifiers=("ctrl",))
+    strata.pointer.click(field)
+    strata.keyboard.press("End")
+    with keyboard_layout(PINYIN):
+        strata.keyboard.press("altgr+1")
+        strata.keyboard.press("space")
+        strata.wait(lambda: field.text == "match-note¯", "Space to complete the tone mark")
+    assert strata.preview() is None
+
+
 @pytest.mark.parametrize("mode", ALL_MODES)
 def test_query_updates_retain_selection_focus_preview_and_background_menu(strata, mode):
     field = filter_results(strata)
@@ -509,6 +525,58 @@ def test_delete_trashes_filtered_result_without_touching_hidden_selection(strata
     )
     assert strata.fixture.path("match-note.txt").read_text() == "root decoy\n"
     assert strata.fixture.path("alpha/match-note.txt").read_text() == "alpha source\n"
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.parametrize("recursive", [
+    pytest.param(False, marks=pytest.mark.preferences(filter_include_subfolders=False)),
+    pytest.param(True, marks=pytest.mark.preferences(filter_include_subfolders=True)),
+])
+def test_filter_results_follow_external_changes(strata, mode, recursive):
+    field = filter_results(strata, count=4 if recursive else 2)
+
+    strata.fixture.path("match-note-new.txt").write_text("new\n")
+    strata.wait(lambda: result(strata, "match-note-new.txt"), "an externally created hit")
+    assert field.has_state("focused")
+    assert field.text == "match-note"
+
+    # Only the watched folder updates live; deeper changes wait for a refresh.
+    strata.fixture.path("alpha/match-note-deep.txt").write_text("deep\n")
+    strata.settle(field)
+    assert result(strata, "alpha/match-note-deep.txt") is None
+    strata.keyboard.press("F5")
+    if recursive:
+        strata.wait(lambda: result(strata, "alpha/match-note-deep.txt"), "F5 to re-index subfolders")
+    strata.wait(lambda: len(strata.matches()) == (6 if recursive else 3), "the refreshed hits")
+    if not recursive:
+        assert result(strata, "alpha/match-note-deep.txt") is None
+    strata.wait(lambda: field.has_state("focused"), "the filter field to keep focus across F5")
+    assert field.text == "match-note"
+
+    # The deleted hit is also the listing's cursor, whose removal must not move focus.
+    strata.fixture.path("match-note.txt").unlink()
+    strata.wait(
+        lambda: strata.matches().count("match-note.txt") == (2 if recursive else 0),
+        "the deleted hit to leave",
+    )
+    steady: list[bool] = []
+
+    def keeps_focus() -> bool:
+        steady.append(field.has_state("focused"))
+        del steady[:-10]
+        return len(steady) == 10 and all(steady)
+
+    strata.wait(keeps_focus, "the filter field to keep focus after the deletion")
+
+    strata.keyboard.press("Down")
+    strata.wait(lambda: not field.has_state("focused"), "Down to leave the filter field")
+    focused = strata.wait(strata.focused_node, "a focused widget")
+    assert any(row.has_state("focused") for row in result_rows(strata)), focused.name
+    assert "Shortcuts" not in focused.name
+    if mode == "Columns":
+        strata.keyboard.press("Return")
+        strata.settle(focused)
+        assert strata.window.find(role="label", name="Unable to open file") is None
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)

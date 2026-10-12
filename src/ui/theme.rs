@@ -172,7 +172,10 @@ pub struct ThemeManager {
     omarchy_available: Cell<bool>,
     omarchy_monitors: RefCell<Vec<gio::FileMonitor>>,
     pending_omarchy_refresh: RefCell<Option<glib::SourceId>>,
-    previewing: Cell<bool>,
+    preview: RefCell<Option<ThemeTokens>>,
+    preview_generation: Cell<u64>,
+    /// Omarchy state can be unreadable mid-switch while the window keeps these colors.
+    applied_omarchy_tokens: RefCell<Option<ThemeTokens>>,
     appearance: RefCell<AppearancePreferences>,
     theme_listeners: ThemeListeners,
     active_model_palette: Cell<crate::services::ModelPalette>,
@@ -212,7 +215,9 @@ impl ThemeManager {
             omarchy_available: Cell::new(omarchy_available),
             omarchy_monitors: RefCell::new(Vec::new()),
             pending_omarchy_refresh: RefCell::new(None),
-            previewing: Cell::new(false),
+            preview: RefCell::new(None),
+            preview_generation: Cell::new(0),
+            applied_omarchy_tokens: RefCell::new(None),
             appearance: RefCell::new(appearance),
             theme_listeners: ThemeListeners::default(),
             active_model_palette: Cell::new(crate::services::ModelPalette {
@@ -268,7 +273,7 @@ impl ThemeManager {
         if !self.themes.borrow().iter().any(|theme| theme.id == id) {
             return;
         }
-        self.previewing.set(false);
+        self.preview.take();
         let changed = self.follows_omarchy() || self.selected_id() != id;
         self.preferences.set_theme_selection("theme", Some(id));
         if !changed {
@@ -281,7 +286,7 @@ impl ThemeManager {
         if enabled && !self.is_omarchy_available() {
             return;
         }
-        self.previewing.set(false);
+        self.preview.take();
         let changed = self.follows_omarchy() != enabled;
         let mode = if enabled { "omarchy" } else { "theme" };
         self.preferences.set_theme_selection(mode, None);
@@ -290,55 +295,59 @@ impl ThemeManager {
         }
     }
 
-    pub fn preview(&self, tokens: &ThemeTokens) {
-        if validate_tokens(tokens).is_ok() {
-            self.previewing.set(true);
-            self.apply_tokens(tokens, None);
-        }
+    /// Applies `tokens` until [`Self::cancel_preview`] or a theme selection; appearance
+    /// changes in the meantime re-apply the preview rather than the saved theme.
+    /// Returns the preview's generation for [`Self::cancel_preview_from`].
+    pub fn preview(&self, tokens: &ThemeTokens) -> Option<u64> {
+        validate_tokens(tokens).ok()?;
+        self.preview.replace(Some(tokens.clone()));
+        self.preview_generation
+            .set(self.preview_generation.get().wrapping_add(1));
+        self.apply_tokens(tokens, None);
+        Some(self.preview_generation.get())
     }
 
     pub fn cancel_preview(&self) {
-        if self.previewing.replace(false) {
+        if self.preview.take().is_some() {
             self.apply_selected();
         }
+    }
+
+    /// Cancels the preview only if no later one has replaced it.
+    pub fn cancel_preview_from(&self, generation: u64) {
+        if self.preview_generation.get() == generation {
+            self.cancel_preview();
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn is_previewing(&self) -> bool {
+        self.preview.borrow().is_some()
     }
 
     pub fn save_custom_theme(&self, tokens: ThemeTokens) -> io::Result<String> {
         validate_tokens(&tokens)
             .map_err(|message| io::Error::new(io::ErrorKind::InvalidInput, message))?;
-        let base = slugify(&tokens.name);
-        if base.is_empty() {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "Enter a theme name",
-            ));
-        }
         let directory = themes_directory();
         fs::create_dir_all(&directory)?;
-        let mut id = base.clone();
-        let mut suffix = 2;
-        while self.themes.borrow().iter().any(|theme| theme.id == id) {
-            id = format!("{base}-{suffix}");
-            suffix += 1;
-        }
+        // Never replace a file already there, even one that did not load: it may be
+        // a broken or newly linked dotfile the user still wants.
+        let id = custom_theme_id(&tokens.name, |candidate| {
+            self.themes
+                .borrow()
+                .iter()
+                .any(|theme| theme.id == candidate)
+                || fs::symlink_metadata(directory.join(format!("{candidate}.toml"))).is_ok()
+        });
         let path = directory.join(format!("{id}.toml"));
         let value = toml::to_string_pretty(&tokens).map_err(io::Error::other)?;
-        crate::storage::atomic_write(&path, value.as_bytes())?;
+        crate::storage::atomic_write_config(&path, value.as_bytes())?;
 
-        let mut themes = self.themes.borrow_mut();
-        if let Some(theme) = themes
-            .iter_mut()
-            .find(|theme| theme.id == id && theme.custom)
-        {
-            theme.tokens = tokens;
-        } else {
-            themes.push(Theme {
-                id: id.clone(),
-                tokens,
-                custom: true,
-            });
-        }
-        drop(themes);
+        self.themes.borrow_mut().push(Theme {
+            id: id.clone(),
+            tokens,
+            custom: true,
+        });
         self.select_theme(&id);
         Ok(id)
     }
@@ -346,6 +355,7 @@ impl ThemeManager {
     pub fn appearance_tokens(&self) -> ThemeTokens {
         if self.follows_omarchy()
             && let Some(tokens) = load_omarchy_theme(self.preferences.omarchy_variant())
+                .or_else(|| self.applied_omarchy_tokens.borrow().clone())
         {
             return tokens;
         }
@@ -367,13 +377,20 @@ impl ThemeManager {
     }
 
     fn apply_selected(&self) {
+        let preview = self.preview.borrow().clone();
+        if let Some(tokens) = preview {
+            self.apply_tokens(&tokens, None);
+            return;
+        }
         if self.follows_omarchy() {
             if let Some(tokens) = load_omarchy_theme(self.preferences.omarchy_variant()) {
+                self.applied_omarchy_tokens.replace(Some(tokens.clone()));
                 let palette = load_omarchy_source_palette();
                 self.apply_tokens(&tokens, palette.as_ref());
             }
             return;
         }
+        self.applied_omarchy_tokens.take();
         if let Some(tokens) = self.current_tokens() {
             self.apply_tokens(&tokens, None);
         }
@@ -390,9 +407,8 @@ impl ThemeManager {
 
     fn apply_tokens(&self, tokens: &ThemeTokens, source_palette: Option<&SourcePalette>) {
         let color = |value: &str| {
-            let rgba = gdk::RGBA::parse(value).unwrap_or(gdk::RGBA::BLACK);
-            let channel = |value: f32| (value * 255.).round() as u32;
-            (channel(rgba.red()) << 16) | (channel(rgba.green()) << 8) | channel(rgba.blue())
+            let [red, green, blue] = parse_rgb_channels(value).unwrap_or_default();
+            (u32::from(red) << 16) | (u32::from(green) << 8) | u32::from(blue)
         };
         self.active_model_palette
             .set(crate::services::ModelPalette {
@@ -417,9 +433,10 @@ impl ThemeManager {
         ));
         apply_interface_font(root_font_px);
         crate::assets::set_interface_icon_scale(root_font_px / 13.0);
-        crate::assets::set_primary_icon_color(&tokens.accent);
-        crate::assets::set_text_icon_color(&tokens.text);
-        crate::assets::set_danger_icon_color(&tokens.danger);
+        // SVG strokes accept fewer color forms than GTK does.
+        crate::assets::set_primary_icon_color(&color_to_hex(&tokens.accent));
+        crate::assets::set_text_icon_color(&color_to_hex(&tokens.text));
+        crate::assets::set_danger_icon_color(&color_to_hex(&tokens.danger));
         super::thumbnail::refresh_all_customized_icons();
         stage_source_style_scheme(tokens, source_palette);
         style_document_buffers(tokens);
@@ -451,9 +468,7 @@ impl ThemeManager {
             let Some(manager) = weak.upgrade() else {
                 return;
             };
-            if !manager.previewing.get() {
-                manager.apply_selected();
-            }
+            manager.apply_selected();
         });
     }
 
@@ -498,29 +513,31 @@ impl ThemeManager {
                         return;
                     };
                     manager.pending_omarchy_refresh.borrow_mut().take();
-                    manager.monitor_omarchy();
-                    let available = load_omarchy_theme(OmarchyVariant::Original).is_some()
-                        || (manager.is_omarchy_available()
-                            && omarchy_state_dir().join("theme.name").is_file());
-                    let availability_changed =
-                        manager.omarchy_available.replace(available) != available;
-                    if !available && manager.follows_omarchy() {
-                        manager.previewing.set(false);
-                        manager.preferences.set_theme_selection("theme", None);
-                        return;
-                    }
-                    if availability_changed {
-                        manager.preferences.notify_changes();
-                        return;
-                    }
-                    if manager.follows_omarchy() && !manager.previewing.get() {
-                        manager.apply_selected();
-                        manager.preferences.notify_changes();
-                    }
+                    manager.refresh_omarchy_state();
                 });
                 manager.pending_omarchy_refresh.replace(Some(refresh));
             });
             self.omarchy_monitors.borrow_mut().push(monitor);
+        }
+    }
+
+    pub(in crate::ui) fn refresh_omarchy_state(self: &Rc<Self>) {
+        self.monitor_omarchy();
+        let available = load_omarchy_theme(OmarchyVariant::Original).is_some()
+            || (self.is_omarchy_available() && omarchy_state_dir().join("theme.name").is_file());
+        let availability_changed = self.omarchy_available.replace(available) != available;
+        if !available && self.follows_omarchy() {
+            self.preview.take();
+            self.preferences.set_theme_selection("theme", None);
+            return;
+        }
+        if availability_changed {
+            self.preferences.notify_changes();
+            return;
+        }
+        if self.follows_omarchy() {
+            self.apply_selected();
+            self.preferences.notify_changes();
         }
     }
 }
@@ -598,8 +615,12 @@ fn load_custom_themes() -> Vec<Theme> {
         .filter_map(|entry| {
             let id = entry.path().file_stem()?.to_string_lossy().into_owned();
             let source = fs::read_to_string(entry.path()).ok()?;
-            let tokens: ThemeTokens = toml::from_str(&source).ok()?;
+            let mut tokens: ThemeTokens = toml::from_str(&source).ok()?;
             validate_tokens(&tokens).ok()?;
+            // Canonical in memory only; the user's file stays as written.
+            for color in tokens.color_fields_mut() {
+                *color = canonical_color(color)?;
+            }
             Some(Theme {
                 id,
                 tokens,
@@ -625,13 +646,7 @@ fn load_omarchy_source_palette() -> Option<SourcePalette> {
 
 fn tokens_from_quattro(name: &str, source: &str, variant: OmarchyVariant) -> Option<ThemeTokens> {
     let values: toml::Value = toml::from_str(source).ok()?;
-    let get = |key: &str| {
-        values
-            .get(key)
-            .and_then(toml::Value::as_str)
-            .filter(|value| gdk::RGBA::parse(*value).is_ok())
-            .map(str::to_owned)
-    };
+    let get = |key: &str| quattro_color(&values, key);
     let source_background = get("background")?;
     let text = get("foreground")?;
     let accent = get("accent")?;
@@ -663,7 +678,7 @@ fn tokens_from_quattro(name: &str, source: &str, variant: OmarchyVariant) -> Opt
 
 fn source_palette_from_quattro(source: &str) -> Option<SourcePalette> {
     let values: toml::Value = toml::from_str(source).ok()?;
-    let get = |key: &str| values.get(key)?.as_str().map(str::to_owned);
+    let get = |key: &str| quattro_color(&values, key);
     Some(SourcePalette {
         statement: get("magenta").or_else(|| get("blue"))?,
         string: get("green")?,
@@ -671,6 +686,12 @@ fn source_palette_from_quattro(source: &str) -> Option<SourcePalette> {
         type_color: get("cyan").or_else(|| get("blue"))?,
         preprocessor: get("yellow")?,
     })
+}
+
+/// Quattro values reach GTK CSS, GtkSourceView XML and SVG strokes, so a value GTK
+/// cannot parse is treated as missing; callers decide whether that is fatal.
+fn quattro_color(values: &toml::Value, key: &str) -> Option<String> {
+    canonical_color(values.get(key)?.as_str()?)
 }
 
 fn default_danger() -> String {
@@ -681,32 +702,11 @@ fn validate_tokens(tokens: &ThemeTokens) -> Result<(), &'static str> {
     if tokens.name.trim().is_empty() {
         return Err("Enter a theme name");
     }
-    for color in [
-        &tokens.background,
-        &tokens.surface,
-        &tokens.text,
-        &tokens.accent,
-        &tokens.danger,
-        &tokens.muted,
-        &tokens.highlight,
-        &tokens.border,
-        &tokens.dim_text,
-    ]
-    .into_iter()
-    .chain(
-        [
-            tokens.syntax_keyword.as_ref(),
-            tokens.syntax_string.as_ref(),
-            tokens.syntax_constant.as_ref(),
-            tokens.syntax_type.as_ref(),
-            tokens.syntax_preprocessor.as_ref(),
-        ]
-        .into_iter()
-        .flatten(),
-    ) {
-        if gdk::RGBA::parse(color).is_err() {
-            return Err("Every color must be a valid CSS color");
-        }
+    if tokens
+        .color_fields()
+        .any(|color| gdk::RGBA::parse(color).is_err())
+    {
+        return Err("Every color must be a valid CSS color");
     }
     Ok(())
 }
@@ -901,6 +901,77 @@ fn resolved_source_palette(tokens: &ThemeTokens, palette: Option<&SourcePalette>
 }
 
 impl ThemeTokens {
+    // Exhaustive destructuring makes a new field fail to compile until it is classified.
+    fn color_fields(&self) -> impl Iterator<Item = &String> {
+        let Self {
+            name: _,
+            background,
+            surface,
+            text,
+            accent,
+            danger,
+            muted,
+            highlight,
+            border,
+            dim_text,
+            syntax_keyword,
+            syntax_string,
+            syntax_constant,
+            syntax_type,
+            syntax_preprocessor,
+        } = self;
+        [
+            background, surface, text, accent, danger, muted, highlight, border, dim_text,
+        ]
+        .into_iter()
+        .chain(
+            [
+                syntax_keyword,
+                syntax_string,
+                syntax_constant,
+                syntax_type,
+                syntax_preprocessor,
+            ]
+            .into_iter()
+            .flatten(),
+        )
+    }
+
+    fn color_fields_mut(&mut self) -> impl Iterator<Item = &mut String> {
+        let Self {
+            name: _,
+            background,
+            surface,
+            text,
+            accent,
+            danger,
+            muted,
+            highlight,
+            border,
+            dim_text,
+            syntax_keyword,
+            syntax_string,
+            syntax_constant,
+            syntax_type,
+            syntax_preprocessor,
+        } = self;
+        [
+            background, surface, text, accent, danger, muted, highlight, border, dim_text,
+        ]
+        .into_iter()
+        .chain(
+            [
+                syntax_keyword,
+                syntax_string,
+                syntax_constant,
+                syntax_type,
+                syntax_preprocessor,
+            ]
+            .into_iter()
+            .flatten(),
+        )
+    }
+
     pub(super) fn initialize_syntax_colors(&mut self) {
         let palette = resolved_source_palette(self, None);
         self.syntax_keyword = Some(palette.statement);
@@ -980,8 +1051,11 @@ fn tokens_css(tokens: &ThemeTokens, root_font_px: f64) -> String {
     // Column headers add six pixels of padding and three extra border pixels.
     let column_header = header - 9.0;
     let control = (24.0 * scale).round();
+    let browser_header = (control + 8.0).max(36.0);
+    // Miller headers keep their three-pixel indicator, bottom border and balancing inset.
+    let browser_column_header = browser_header - 6.0;
     let sizing = format!(
-        "headerbar, headerbar > windowhandle > box, .mode-pane-header, .preview-header {{ min-height: {header}px; }}\n.column-header {{ min-height: {column_header}px; }}\nheaderbar .sidebar-toggle, headerbar button.header-action, headerbar menubutton.header-action > button, .preview-header-action, button.column-header-action, menubutton.column-header-action > button {{ min-width: {control}px; min-height: {control}px; }}\n.file-operation-card button.progress-card-action {{ min-width: 0; min-height: 0; }}\n"
+        "headerbar, headerbar > windowhandle > box, .mode-pane-header, .preview-header {{ min-height: {header}px; }}\n.column-header {{ min-height: {column_header}px; }}\nheaderbar .sidebar-toggle, button.header-action, headerbar menubutton.header-action > button, .preview-header-action, button.column-header-action, menubutton.column-header-action > button {{ min-width: {control}px; min-height: {control}px; }}\n.file-operation-card button.progress-card-action {{ min-width: 0; min-height: 0; }}\n.tab-strip, headerbar.browser-header, headerbar.browser-header > windowhandle > box, .mode-pane-header, .preview-header {{ min-height: {browser_header}px; }}\n.directory-column .column-header {{ min-height: {browser_column_header}px; }}\n.mode-pane-header .list-navigation-button, .sidebar-row > box > image, .sidebar-device-action {{ min-width: {control}px; min-height: {control}px; }}\n"
     );
     let colors = format!(
         "@define-color strata_bg {};\n@define-color strata_surface {};\n@define-color strata_text {};\n@define-color strata_accent {};\n@define-color strata_danger {};\n@define-color strata_muted {};\n@define-color strata_highlight {};\n@define-color strata_border {};\n@define-color strata_dim_text {};\nwindow, popover, popover.background {{ font-size: {root_font_px:.6}px; }}\n",
@@ -1001,13 +1075,30 @@ fn tokens_css(tokens: &ThemeTokens, root_font_px: f64) -> String {
 /// Parses colours GTK accepts (`#rgb`, `#rrggbb`, `rgb(...)`, names) into 8-bit
 /// channels. Strata emits these channels as `#rrggbb` in GtkSourceView schemes.
 pub(crate) fn parse_rgb_channels(value: &str) -> Option<[u8; 3]> {
+    parse_rgba_channels(value).map(|[red, green, blue, _]| [red, green, blue])
+}
+
+fn parse_rgba_channels(value: &str) -> Option<[u8; 4]> {
     let color = gdk::RGBA::parse(value).ok()?;
     let channel = |component: f32| (f64::from(component).clamp(0.0, 1.0) * 255.0).round() as u8;
     Some([
         channel(color.red()),
         channel(color.green()),
         channel(color.blue()),
+        channel(color.alpha()),
     ])
+}
+
+/// Rewrites a color GTK can parse as `#rrggbb`, or `#rrggbbaa` when translucent.
+/// `gdk::RGBA::parse` also accepts 9-, 12- and 16-digit hex, which GTK CSS rejects.
+fn canonical_color(value: &str) -> Option<String> {
+    let [red, green, blue, alpha] = parse_rgba_channels(value)?;
+    let rgb = hex_from_channels([red, green, blue]);
+    Some(if alpha == u8::MAX {
+        rgb
+    } else {
+        format!("{rgb}{alpha:02x}")
+    })
 }
 
 fn hex_from_channels(channels: [u8; 3]) -> String {
@@ -1047,6 +1138,26 @@ fn slugify(name: &str) -> String {
         })
         .trim_end_matches('-')
         .to_owned()
+}
+
+const FALLBACK_CUSTOM_THEME_ID: &str = "custom-theme";
+
+/// File id for a new custom theme: the ASCII slug of `name`, or a generic id when the
+/// name has no ASCII letters or digits, suffixed until `taken` no longer matches.
+fn custom_theme_id(name: &str, taken: impl Fn(&str) -> bool) -> String {
+    let slug = slugify(name);
+    let base = if slug.is_empty() {
+        FALLBACK_CUSTOM_THEME_ID
+    } else {
+        slug.as_str()
+    };
+    let mut id = base.to_owned();
+    let mut suffix = 2;
+    while taken(&id) {
+        id = format!("{base}-{suffix}");
+        suffix += 1;
+    }
+    id
 }
 
 fn title_case_slug(slug: &str) -> String {
