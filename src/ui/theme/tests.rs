@@ -162,6 +162,44 @@ fn saving_a_custom_theme_never_overwrites_an_existing_theme_file() {
 }
 
 #[test]
+fn rewriting_the_selected_custom_theme_applies_without_a_restart() {
+    gtk_test(
+        "ui::theme::tests::rewriting_the_selected_custom_theme_applies_without_a_restart",
+        || {
+            let directory = themes_directory();
+            std::fs::create_dir_all(&directory).expect("themes directory");
+            let mut tokens = azure_tokens();
+            tokens.name = "Live Reload".to_owned();
+            tokens.accent = "#112233".to_owned();
+            let path = directory.join("live-reload.toml");
+            std::fs::write(&path, toml::to_string_pretty(&tokens).expect("theme file"))
+                .expect("written theme");
+
+            let manager = ThemeManager::shared();
+            manager.refresh_custom_themes();
+            manager.select_theme("live-reload");
+            assert_eq!(manager.active_model_palette().accent, 0x11_22_33);
+
+            // A generator rewrites the file while the theme stays selected.
+            tokens.accent = "#445566".to_owned();
+            std::fs::write(&path, toml::to_string_pretty(&tokens).expect("theme file"))
+                .expect("rewritten theme");
+            manager.refresh_custom_themes();
+            assert_eq!(manager.active_model_palette().accent, 0x44_55_66);
+            assert_eq!(
+                manager.current_tokens().expect("selected theme").accent,
+                "#445566"
+            );
+
+            // A file caught mid-write keeps the last applied colors.
+            std::fs::write(&path, "not a theme").expect("broken theme");
+            manager.refresh_custom_themes();
+            assert_eq!(manager.active_model_palette().accent, 0x44_55_66);
+        },
+    );
+}
+
+#[test]
 fn names_become_safe_config_file_slugs() {
     assert_eq!(slugify("  Rosé / Pine!  "), "ros-pine");
     assert_eq!(slugify("Ocean  Blue"), "ocean-blue");

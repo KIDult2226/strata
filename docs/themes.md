@@ -45,6 +45,14 @@ The configurator derives a new file's ID from the theme name, lowercased, keepin
 
 Theme files may be symlinks into a dotfiles repository. The configurator never replaces an existing theme: when the ID matches a bundled theme or a loaded custom theme, or `<theme-id>.toml` already exists, whether it loaded or not (for example an invalid file or a link to a missing or broken dotfile), the new theme is saved as the next free `<theme-id>-2.toml`, `<theme-id>-3.toml`, and so on. Saving a theme named `Dracula` therefore creates `dracula-2.toml` and leaves the bundled Dracula theme in place.
 
+## Live updates
+
+Strata watches `~/.config/strata/themes/` while it runs. When a `.toml` file changes there, the custom themes are read again; if the theme currently selected resolves to different colors, it is re-applied to every open window, including icon colors and code-preview syntax colors. No restart is needed.
+
+This makes dynamic themes work: a generator can rewrite a theme file in place, for example a [matugen](https://github.com/InioX/matugen) template that follows the wallpaper and writes `~/.config/strata/themes/matugen.toml` on every change. Select that theme once (Settings → Appearance, or `theme = "matugen"` in `settings.toml`) and open windows follow the file.
+
+Writes are debounced, so a generator touching several files in a row triggers one re-read. If a file is caught mid-write, invalid, or removed, the current appearance stays in place; the next read that produces valid colors applies them.
+
 ## Syntax colors
 
 All 95 bundled themes include explicit code-preview palettes. Tinted Base16 palettes map `base0E` to keywords, `base0B` to strings, `base09` to constants, `base0A` to types, and `base0C` to preprocessor directives. Catppuccin and Tokyo Night use the pinned `catppuccin-mocha` and `tokyo-night-dark` syntax palettes; Azure Glow and Omarchy Light have original curated palettes.
