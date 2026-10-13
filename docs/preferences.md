@@ -298,6 +298,16 @@ takes precedence. Cairo selected by Strata is a process environment setting,
 so applications started by Strata may inherit it; it does not change desktop
 or system-wide settings.
 
+Independently of the renderer choice, Strata switches GTK's `gtk-font-rendering`
+setting to **manual** for its own process. GTK's default automatic mode sizes GPU
+glyph atlas slots from unhinted glyph extents while rasterizing with slight
+hinting, so at some device pixel sizes (15px JetBrains Mono, for example) the GL
+and Vulkan renderers drop the top pixel row of glyphs such as `T`
+([GNOME/gtk#8395](https://gitlab.gnome.org/GNOME/gtk/-/issues/8395)). Manual mode
+hints metrics as well, so the extents match the raster, and it follows the
+desktop's antialiasing and hint-style settings. This is process-local and does
+not change the desktop setting.
+
 ## Element glow
 
 In **Settings → Appearance → Effects**, turn off **Element glow** to remove
