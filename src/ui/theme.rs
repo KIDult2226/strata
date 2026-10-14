@@ -338,7 +338,7 @@ impl ThemeManager {
             .map_err(|message| io::Error::new(io::ErrorKind::InvalidInput, message))?;
         let directory = themes_directory();
         fs::create_dir_all(&directory)?;
-        // The save may have created the directory, so watch it from now on too.
+        // The directory may not have existed when the watch was last armed.
         self.monitor_custom_themes();
         // Never replace a file already there, even one that did not load: it may be
         // a broken or newly linked dotfile the user still wants.
@@ -562,9 +562,6 @@ impl ThemeManager {
         }
     }
 
-    /// Watch the custom theme directory so a file rewritten while its theme is
-    /// selected (for example a matugen template following the wallpaper)
-    /// applies without a restart.
     fn monitor_custom_themes(self: &Rc<Self>) {
         for monitor in self.themes_monitors.take() {
             monitor.cancel();
@@ -606,12 +603,22 @@ impl ThemeManager {
         self.themes_monitors.borrow_mut().push(monitor);
     }
 
-    /// Re-read the custom theme files and re-apply the selection when its
-    /// resolved colors changed. A file caught mid-write or deleted keeps the
-    /// current appearance until it loads again.
+    /// A selected file caught mid-write, invalid, or removed keeps its last
+    /// valid colors until a read succeeds again.
     pub(in crate::ui) fn refresh_custom_themes(&self) {
+        let selected = self.preferences.selected_theme_id();
         let before = self.current_tokens();
-        let themes = merge_builtin_and_custom_themes(builtins(), load_custom_themes());
+        let mut themes = merge_builtin_and_custom_themes(builtins(), load_custom_themes());
+        if !themes.iter().any(|theme| theme.id == selected)
+            && let Some(previous) = self
+                .themes
+                .borrow()
+                .iter()
+                .find(|theme| theme.id == selected)
+                .cloned()
+        {
+            themes.push(previous);
+        }
         self.themes.replace(themes);
         let after = self.current_tokens();
         if self.follows_omarchy() || after.is_none() || after == before {

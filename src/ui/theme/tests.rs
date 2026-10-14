@@ -172,31 +172,61 @@ fn rewriting_the_selected_custom_theme_applies_without_a_restart() {
             tokens.name = "Live Reload".to_owned();
             tokens.accent = "#112233".to_owned();
             let path = directory.join("live-reload.toml");
-            std::fs::write(&path, toml::to_string_pretty(&tokens).expect("theme file"))
-                .expect("written theme");
+            let write_theme = |tokens: &ThemeTokens| {
+                std::fs::write(&path, toml::to_string_pretty(tokens).expect("theme file"))
+                    .expect("written theme");
+            };
+            write_theme(&tokens);
 
             let manager = ThemeManager::shared();
-            manager.refresh_custom_themes();
             manager.select_theme("live-reload");
             assert_eq!(manager.active_model_palette().accent, 0x11_22_33);
 
-            // A generator rewrites the file while the theme stays selected.
             tokens.accent = "#445566".to_owned();
-            std::fs::write(&path, toml::to_string_pretty(&tokens).expect("theme file"))
-                .expect("rewritten theme");
-            manager.refresh_custom_themes();
-            assert_eq!(manager.active_model_palette().accent, 0x44_55_66);
+            write_theme(&tokens);
+            wait_for_live_theme(|| manager.active_model_palette().accent == 0x44_55_66);
             assert_eq!(
                 manager.current_tokens().expect("selected theme").accent,
                 "#445566"
             );
 
-            // A file caught mid-write keeps the last applied colors.
             std::fs::write(&path, "not a theme").expect("broken theme");
-            manager.refresh_custom_themes();
+            settle_live_theme();
             assert_eq!(manager.active_model_palette().accent, 0x44_55_66);
+            assert!(
+                manager
+                    .themes()
+                    .iter()
+                    .any(|theme| theme.id == "live-reload"),
+                "a broken file keeps the selected theme listed"
+            );
+
+            tokens.accent = "#778899".to_owned();
+            write_theme(&tokens);
+            wait_for_live_theme(|| manager.active_model_palette().accent == 0x77_88_99);
         },
     );
+}
+
+fn wait_for_live_theme(mut ready: impl FnMut() -> bool) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while !ready() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "live theme refresh timed out"
+        );
+        gtk::glib::MainContext::default().iteration(false);
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+}
+
+/// Runs the main loop past the refresh debounce so a missing change is a real absence.
+fn settle_live_theme() {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(400);
+    while std::time::Instant::now() < deadline {
+        gtk::glib::MainContext::default().iteration(false);
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
 }
 
 #[test]
