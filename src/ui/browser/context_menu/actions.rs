@@ -42,9 +42,6 @@ pub(super) struct ActionMenuSection {
     monitor_handlers: RefCell<Vec<gtk::glib::SignalHandlerId>>,
     refresh_pending: Cell<bool>,
     selection: RefCell<Option<SelectionMenuContext>>,
-    /// Cleared when the menu is shown, set when a button press reaches the
-    /// menu itself: a button release arriving before then can only end the
-    /// click that opened the menu (see the controller in `new`).
     pressed_inside: Rc<Cell<bool>>,
 }
 
@@ -179,21 +176,14 @@ impl ActionMenuSection {
             handler.replace(Some(id));
             clock.request_phase(gtk::gdk::FrameClockPhase::AFTER_PAINT);
         });
-        // GTK's model buttons activate on an unpaired release: one whose press
-        // was delivered elsewhere (gtkgestureclick.c emits it for any button
-        // and gtkmodelbutton.c activates when the pointer is inside the row).
-        // The click that opens this menu starts with a press outside the
-        // popover, but depending on the compositor its release can still end
-        // up here: with niri the xdg_popup grab takes over at the press, while
-        // Hyprland and X11 keep pointer focus on the window that saw the
-        // press. Drop a button release that arrives before any press has
-        // reached the menu — it can only be the end of the opening click — so
-        // a plain right click leaves the menu open. `show` clears the flag for
-        // each presentation, so nothing can stay armed.
+        // GtkModelButton activates on an unpaired release, and some compositors
+        // (niri) deliver the release of the click that opened the menu to the
+        // popup. A release before any press inside the menu can only be that one.
         let pressed_inside = Rc::new(Cell::new(false));
         let seen_press = pressed_inside.clone();
         let release_guard = gtk::EventControllerLegacy::new();
         release_guard.set_propagation_phase(gtk::PropagationPhase::Capture);
+        // Also cover the nested submenu popovers, which are separate natives.
         release_guard.set_propagation_limit(gtk::PropagationLimit::None);
         release_guard.connect_event(move |_, event| match event.event_type() {
             gtk::gdk::EventType::ButtonPress => {
@@ -276,8 +266,6 @@ impl ActionMenuSection {
     }
 
     pub(super) fn show(&self, anchor: &gtk::Widget, x: f64, y: f64) {
-        // Any release before the first press inside the menu belongs to the
-        // click that opens it, not to a row (see the controller in `new`).
         self.pressed_inside.set(false);
         if self.popover.parent().is_none()
             && let Some(owner) = self.owner.upgrade()
